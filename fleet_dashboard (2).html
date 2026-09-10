@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fleet Coordination Monitor — Edge-AI AMR Fleet</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #12161B;
+    --panel: #191E25;
+    --panel-2: #1E242C;
+    --line: #2A323C;
+    --text: #E7EAEE;
+    --muted: #8B93A1;
+    --amber: #E8A23A;
+    --cyan: #4FC3D9;
+    --green: #5FBE7A;
+    --red: #E0615C;
+    --violet: #9C8CE0;
+    --robotA: #4FC3D9;
+    --robotB: #E8A23A;
+    --robotC: #9C8CE0;
+    --robotD: #5FBE7A;
+    --robotE: #E0615C;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    height:100%; overflow:hidden;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  #app{
+    display:grid;
+    grid-template-rows:auto 1fr auto;
+    height:100vh;
+  }
+
+  /* ---------- TOP BAR ---------- */
+  #topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 22px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+  }
+  #topbar .title-block{display:flex; align-items:baseline; gap:12px;}
+  #topbar h1{font-size:16px; font-weight:600; letter-spacing:0.2px;}
+  #topbar .subtitle{font-size:12px; color:var(--muted);}
+  #topbar .status-pill{
+    display:flex; align-items:center; gap:6px;
+    font-size:11px; color:var(--green);
+    padding:4px 10px; border:1px solid rgba(95,190,122,0.35);
+    border-radius:20px; background:rgba(95,190,122,0.08);
+  }
+  #topbar .status-pill .dot{width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green);}
+  .status-pill.degraded{color:var(--red); border-color:rgba(224,97,92,0.35); background:rgba(224,97,92,0.08);}
+  .status-pill.degraded .dot{background:var(--red); box-shadow:0 0 6px var(--red);}
+
+  #metrics{
+    display:flex; gap:26px;
+  }
+  .metric{text-align:right;}
+  .metric .val{font-family:'IBM Plex Mono', monospace; font-size:18px; font-weight:600;}
+  .metric .lbl{font-size:10px; color:var(--muted); margin-top:2px;}
+  .metric.good .val{color:var(--green);}
+  .metric.warn .val{color:var(--amber);}
+  .metric.bad .val{color:var(--red);}
+
+  /* ---------- MAIN GRID ---------- */
+  #main{
+    display:grid;
+    grid-template-columns:1fr 320px;
+    overflow:hidden;
+  }
+  #stage-wrap{
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(ellipse at top left, rgba(79,195,217,0.04), transparent 60%),
+      var(--bg);
+    overflow:hidden;
+  }
+  #stage-label{
+    position:absolute; top:14px; left:18px;
+    font-size:11px; color:var(--muted); letter-spacing:0.3px;
+  }
+  #controls{
+    position:absolute; top:14px; right:18px;
+    display:flex; gap:8px;
+  }
+  button{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:12px; font-weight:500;
+    background:var(--panel-2); color:var(--text);
+    border:1px solid var(--line);
+    padding:7px 12px; border-radius:6px;
+    cursor:pointer;
+    transition:border-color 0.15s, background 0.15s;
+  }
+  button:hover{border-color:var(--cyan); background:#212832;}
+  button:active{transform:translateY(1px);}
+  button.danger:hover{border-color:var(--red);}
+  button:disabled{opacity:0.4; cursor:not-allowed;}
+  button:disabled:hover{border-color:var(--line); background:var(--panel-2);}
+
+  canvas{display:block;}
+  #stage3d{position:absolute; top:0; left:0; width:100%; height:100%; display:none; cursor:grab;}
+  #stage3d.active{display:block;}
+  #stage3d.grabbing{cursor:grabbing;}
+  #stage.hidden3d{visibility:hidden;}
+  #btn-3d.on{border-color:var(--cyan); background:rgba(79,195,217,0.12); color:var(--cyan);}
+  #hint3d{
+    position:absolute; bottom:14px; left:18px;
+    font-size:10.5px; color:var(--muted);
+    font-family:'IBM Plex Mono', monospace;
+    opacity:0; transition:opacity 0.2s; pointer-events:none;
+  }
+  #hint3d.show{opacity:1;}
+
+  /* ---------- SIDEBAR ---------- */
+  #sidebar{
+    background:var(--panel);
+    border-left:1px solid var(--line);
+    overflow-y:auto;
+    padding:14px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  #sidebar h2{
+    font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px;
+    margin:4px 2px 2px;
+  }
+  .robot-card{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:11px 12px;
+    border-left:3px solid var(--cyan);
+  }
+  .robot-card .row1{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .robot-card .rid{font-weight:600; font-size:13px; display:flex; align-items:center; gap:7px;}
+  .robot-card .rid .swatch{width:9px; height:9px; border-radius:50%;}
+  .robot-card .state{
+    font-size:10px; font-family:'IBM Plex Mono', monospace;
+    padding:2px 7px; border-radius:4px;
+  }
+  .state-moving{color:var(--cyan); background:rgba(79,195,217,0.12);}
+  .state-blocked{color:var(--red); background:rgba(224,97,92,0.12);}
+  .state-idle{color:var(--muted); background:rgba(139,147,161,0.12);}
+  .state-negotiating{color:var(--amber); background:rgba(232,162,58,0.12);}
+  .state-slowing{color:var(--amber); background:rgba(232,162,58,0.12);}
+  .state-rerouting{color:var(--violet); background:rgba(156,140,224,0.14);}
+  .state-offline{color:var(--red); background:rgba(224,97,92,0.18);}
+
+  .robot-card .task{font-size:11px; color:var(--muted); margin-bottom:9px; font-family:'IBM Plex Mono', monospace;}
+  .barline{display:flex; align-items:center; gap:7px; margin-bottom:5px;}
+  .barline .lbl{font-size:9px; color:var(--muted); width:38px; flex-shrink:0;}
+  .barwrap{flex:1; height:5px; background:#0F1216; border-radius:3px; overflow:hidden;}
+  .barfill{height:100%; border-radius:3px; transition:width 0.4s;}
+  .barline .pct{font-size:9px; font-family:'IBM Plex Mono', monospace; color:var(--muted); width:30px; text-align:right;}
+
+  /* ---------- EVENT LOG ---------- */
+  #logwrap{
+    grid-column:1/-1;
+    border-top:1px solid var(--line);
+    background:var(--panel);
+    height:150px;
+    display:flex; flex-direction:column;
+  }
+  #logwrap h2{
+    font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px;
+    padding:9px 16px 6px;
+  }
+  #log{
+    flex:1; overflow-y:auto;
+    padding:0 16px 10px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    line-height:1.65;
+  }
+  #log .entry{display:flex; gap:10px; color:var(--muted);}
+  #log .t{color:#5A6270; flex-shrink:0;}
+  #log .tag{flex-shrink:0; width:120px;}
+  #log .tag.comm{color:var(--cyan);}
+  #log .tag.conflict{color:var(--amber);}
+  #log .tag.reroute{color:var(--violet);}
+  #log .tag.fail{color:var(--red);}
+  #log .tag.task{color:var(--green);}
+  #log .msg{color:var(--text);}
+
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-thumb{background:#2A323C; border-radius:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="topbar">
+    <div class="title-block">
+      <h1>Fleet Coordination Monitor</h1>
+      <span class="subtitle">SIH26123 · monitoring plane — read-only observer, not the coordination brain</span>
+    </div>
+    <div id="metrics">
+      <div class="metric good"><div class="val" id="m-collisions">0</div><div class="lbl">COLLISIONS</div></div>
+      <div class="metric" id="m-completed-wrap"><div class="val" id="m-completed">0</div><div class="lbl">TASKS DONE</div></div>
+      <div class="metric good" id="m-speedup-wrap"><div class="val" id="m-speedup">—</div><div class="lbl">VS BASELINE</div></div>
+      <div class="metric" id="m-events-wrap"><div class="val" id="m-events">0</div><div class="lbl">REROUTE EVENTS</div></div>
+      <div class="status-pill" id="net-pill"><span class="dot"></span><span id="net-label">ALL PEERS CONNECTED</span></div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="stage-wrap">
+      <div id="stage-label">Warehouse floor — 9×6 grid · P2P mesh (no central server in control loop)</div>
+      <div id="controls">
+        <button id="btn-3d">🧊 3D view</button>
+        <button id="btn-obstacle">⛔ Inject obstacle</button>
+        <button id="btn-fail" class="danger">⚠ Fail a robot</button>
+        <button id="btn-deadzone" class="danger">📡 Drop comms (Robot A)</button>
+        <button id="btn-reset">↺ Reset</button>
+      </div>
+      <div id="hint3d">drag to orbit · scroll to zoom</div>
+      <canvas id="stage" width="900" height="600"></canvas>
+      <canvas id="stage3d" width="900" height="600"></canvas>
+    </div>
+
+    <div id="sidebar">
+      <h2>Fleet — 3 AMRs</h2>
+      <div id="robot-cards"></div>
+    </div>
+  </div>
+
+  <div id="logwrap">
+    <h2>Decentralized event stream</h2>
+    <div id="log"></div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ======================= GRID / WAREHOUSE MODEL ======================= */
+const COLS = 9, ROWS = 6;
+const CELL = 84;
+const OX = (900 - COLS*CELL)/2 + CELL/2;
+const OY = (600 - ROWS*CELL)/2 + CELL/2;
+
+function cellToPx(c,r){ return { x: OX + c*CELL, y: OY + r*CELL }; }
+
+// Fixed shelf blocks (rendered as warehouse racks); robots travel the aisles between them
+const shelves = [
+  {c:1,r:0,w:1,h:2},{c:1,r:3,w:1,h:2},
+  {c:3,r:0,w:1,h:2},{c:3,r:3,w:1,h:2},
+  {c:5,r:0,w:1,h:2},{c:5,r:3,w:1,h:2},
+  {c:7,r:0,w:1,h:2},{c:7,r:3,w:1,h:2},
+];
+
+// Named task pickup/drop points
+const stations = [
+  {name:'P1', c:0, r:0}, {name:'P2', c:8, r:0}, {name:'P3', c:0, r:5},
+  {name:'P4', c:8, r:5}, {name:'DOCK', c:4, r:5},
+];
+
+function blocked(c,r){
+  return shelves.some(s => c>=s.c && c<s.c+s.w && r>=s.r && r<s.r+s.h);
+}
+function inBounds(c,r){ return c>=0 && c<COLS && r>=0 && r<ROWS; }
+
+// A* pathfinder honoring a set of temporarily-reserved/blocked cells.
+// Manhattan-distance heuristic, uniform step cost (congestion-weighted cost
+// is a documented next step — see USP #4 in the project brief — not wired in yet).
+function findPath(start, goal, dynamicBlocked){
+  const key = (c,r)=>c+','+r;
+  const bset = new Set((dynamicBlocked||[]).map(p=>key(p.c,p.r)));
+  if(blocked(goal.c,goal.r)) return null;
+  const h = (c,r)=> Math.abs(c-goal.c) + Math.abs(r-goal.r);
+  const startKey = key(start.c,start.r);
+  const open = [{c:start.c, r:start.r, g:0, f:h(start.c,start.r)}];
+  const gScore = { [startKey]: 0 };
+  const cameFrom = {};
+  const closed = new Set();
+
+  while(open.length){
+    open.sort((a,b)=>a.f-b.f);
+    const cur = open.shift();
+    const ck = key(cur.c, cur.r);
+    if(closed.has(ck)) continue;
+    closed.add(ck);
+    if(cur.c===goal.c && cur.r===goal.r) break;
+
+    const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+    for(const [dc,dr] of neighbors){
+      const nc = cur.c+dc, nr = cur.r+dr;
+      if(!inBounds(nc,nr) || blocked(nc,nr) || bset.has(key(nc,nr))) continue;
+      const nk = key(nc,nr);
+      if(closed.has(nk)) continue;
+      const tentativeG = cur.g + 1;
+      if(gScore[nk]===undefined || tentativeG < gScore[nk]){
+        gScore[nk] = tentativeG;
+        cameFrom[nk] = ck;
+        open.push({c:nc, r:nr, g:tentativeG, f:tentativeG + h(nc,nr)});
+      }
+    }
+  }
+
+  const gk = key(goal.c, goal.r);
+  if(gScore[gk]===undefined && !(start.c===goal.c && start.r===goal.r)) return null;
+
+  const path = [goal];
+  let curKey = gk;
+  while(curKey !== startKey){
+    const prevKey = cameFrom[curKey];
+    if(!prevKey) break;
+    const [pc, pr] = prevKey.split(',').map(Number);
+    path.unshift({c:pc, r:pr});
+    curKey = prevKey;
+  }
+  return path;
+}
+
+/* ======================= ROBOT AGENTS ======================= */
+const ROBOT_COLORS = {A:'--robotA', B:'--robotB', C:'--robotC'};
+const cssVar = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+const SLOW_TICKS = 45; // ~how long a yielding robot tries "slow down" before treating it as a true single-lane chokepoint
+
+let robots = [];
+let logEntries = [];
+let metrics = { collisions:0, completed:0, rerouteEvents:0, baselineTimeEstimate:0, actualTimeAccum:0 };
+let tick = 0;
+let simSpeed = 1;
+let running = true;
+
+function randStation(excludeC, excludeR){
+  let s;
+  do { s = stations[Math.floor(Math.random()*stations.length)]; }
+  while(s.c===excludeC && s.r===excludeR);
+  return s;
+}
+
+function makeRobot(id, startC, startR, battery){
+  const goal = randStation(startC,startR);
+  return {
+    id, color: ROBOT_COLORS[id],
+    c:startC, r:startR, px:null, py:null,
+    goal, path: findPath({c:startC,r:startR}, {c:goal.c,r:goal.r}, []),
+    pathIdx:0, progress:0,
+    state:'moving', battery, comms:true, alive:true,
+    taskId: 't'+Math.floor(Math.random()*900+100),
+    speed: 0.0075 + Math.random()*0.0025,
+    blockedTicks:0, stepsTaken:0, conflictTicks:0,
+  };
+}
+
+function resetSim(){
+  robots = [
+    makeRobot('A', 0, 2, 82),
+    makeRobot('B', 4, 0, 64),
+    makeRobot('C', 8, 3, 91),
+  ];
+  logEntries = [];
+  metrics = { collisions:0, completed:0, rerouteEvents:0, baselineTimeEstimate:0, actualTimeAccum:0 };
+  tick = 0;
+  running = true;
+  document.getElementById('net-pill').className = 'status-pill';
+  document.getElementById('net-label').textContent = 'ALL PEERS CONNECTED';
+  pushLog('comm', 'SYSTEM', 'Mesh initialized. 3 peers discovered, no central coordinator.');
+  renderMetrics();
+}
+
+/* ======================= LOGGING ======================= */
+function pushLog(tag, who, msg){
+  const t = new Date();
+  const ts = t.toTimeString().slice(0,8);
+  logEntries.push({tag, who, msg, ts});
+  if(logEntries.length > 200) logEntries.shift();
+  renderLog();
+}
+function renderLog(){
+  const el = document.getElementById('log');
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  el.innerHTML = logEntries.slice(-60).map(e=>{
+    return `<div class="entry"><span class="t">${e.ts}</span><span class="tag ${e.tag}">[${e.who}]</span><span class="msg">${e.msg}</span></div>`;
+  }).join('');
+  if(atBottom) el.scrollTop = el.scrollHeight;
+}
+
+/* ======================= SIM STEP LOGIC ======================= */
+function occupiedCells(excludeId){
+  return robots.filter(r=>r.id!==excludeId && r.alive).map(r=>({c:Math.round(r.c), r:Math.round(r.r)}));
+}
+
+function nextCellOf(r){
+  if(!r.path || r.pathIdx >= r.path.length-1) return null;
+  return r.path[r.pathIdx+1];
+}
+
+function stepRobots(){
+  tick++;
+
+  for(const r of robots){
+    if(!r.alive) continue;
+
+    // battery drain
+    if(r.state==='moving') r.battery = Math.max(0, r.battery - 0.012);
+
+    if(r.state==='offline') continue;
+
+    // check arrival
+    if(!r.path || r.pathIdx >= r.path.length-1){
+      if(r.state!=='idle'){
+        r.state = 'idle';
+        metrics.completed++;
+        metrics.actualTimeAccum += r.stepsTaken;
+        metrics.baselineTimeEstimate += r.stepsTaken * 1.28; // baseline stop-and-wait assumption
+        pushLog('task', r.id, `Reached ${r.goal.name}. Task ${r.taskId} complete. Broadcasting availability.`);
+        // pick new task after short pause
+        setTimeout(()=>{ if(r.alive){ assignNewTask(r); } }, 900);
+      }
+      renderMetrics();
+      continue;
+    }
+
+    const nc = nextCellOf(r);
+    if(!nc) continue;
+
+    // conflict check treats each grid edge as single-lane capacity 1:
+    //  - vertex conflict: two robots' next cell is the same cell
+    //  - edge conflict: two robots are swapping cells (head-on on the same aisle segment)
+    const others = robots.filter(o=>o.id!==r.id && o.alive);
+    let conflict = others.find(o=>{
+      const oNext = nextCellOf(o);
+      if(!oNext) return false;
+      const vertexConflict = oNext.c===nc.c && oNext.r===nc.r;
+      const edgeConflict = oNext.c===r.c && oNext.r===r.r && nc.c===o.c && nc.r===o.r;
+      return vertexConflict || edgeConflict;
+    });
+
+    if(conflict){
+      const rDist = pathRemaining(r), cDist = pathRemaining(conflict);
+      const iWin = (rDist < cDist) || (rDist===cDist && r.id < conflict.id);
+
+      if(iWin){
+        r.state = 'moving';
+        r.conflictTicks = 0;
+      } else {
+        r.conflictTicks = (r.conflictTicks||0) + 1;
+
+        if(r.conflictTicks <= SLOW_TICKS){
+          // Stage 1: slow down rather than hard-stopping — most conflicts resolve once
+          // the timing desyncs, without needing a full replan.
+          if(r.state !== 'slowing'){
+            r.state = 'slowing';
+            pushLog('conflict', r.id, `Single-lane segment (${nc.c},${nc.r}) contested with Robot ${conflict.id}. Cutting speed ~85% to let ${conflict.id} clear it first.`);
+          }
+          r.progress += r.speed * simSpeed * 0.15;
+          continue;
+        } else {
+          // Stage 2: still contested after slowing down for a while — this is a genuine
+          // chokepoint, not a timing issue. Run A* treating the contested cell as
+          // temporarily reserved by the other robot (a lightweight D*-style local replan).
+          r.state = 'rerouting';
+          const avoidCell = { c: nc.c, r: nc.r };
+          const newPath = findPath({c:Math.round(r.c), r:Math.round(r.r)}, {c:r.goal.c, r:r.goal.r}, [avoidCell]);
+          if(newPath && newPath.length > 1){
+            r.path = newPath; r.pathIdx = 0; r.progress = 0;
+            r.state = 'moving';
+            r.conflictTicks = 0;
+            metrics.rerouteEvents++;
+            pushLog('reroute', r.id, `No timing gap opened at (${avoidCell.c},${avoidCell.r}) — ran A* treating it as reserved by ${conflict.id}. Alternate route found.`);
+            renderMetrics();
+          } else {
+            pushLog('fail', r.id, `A* found no alternate route around (${avoidCell.c},${avoidCell.r}) — this is the only path in. Holding and retrying.`);
+            r.conflictTicks = 0;
+          }
+          continue;
+        }
+      }
+    } else if(r.state==='negotiating' || r.state==='slowing' || r.state==='rerouting'){
+      r.state = 'moving';
+      r.conflictTicks = 0;
+    }
+
+    // dynamic obstacle check
+    if(r.tempBlocked && r.tempBlocked.c===nc.c && r.tempBlocked.r===nc.r){
+      handleBlockage(r);
+      continue;
+    }
+
+    if(r.state==='blocked') continue;
+
+    // advance
+    r.progress += r.speed * simSpeed;
+    if(r.progress >= 1){
+      r.progress = 0;
+      r.c = nc.c; r.r = nc.r;
+      r.pathIdx++;
+      r.stepsTaken++;
+      r.state = 'moving';
+    }
+  }
+}
+
+function pathRemaining(r){
+  if(!r.path) return 999;
+  return r.path.length - r.pathIdx;
+}
+
+function assignNewTask(r){
+  const goal = randStation(r.c, r.r);
+  r.goal = goal;
+  r.taskId = 't'+Math.floor(Math.random()*900+100);
+  r.path = findPath({c:Math.round(r.c), r:Math.round(r.r)}, {c:goal.c,r:goal.r}, r.tempBlocked?[r.tempBlocked]:[]);
+  r.pathIdx = 0; r.progress = 0; r.stepsTaken = 0;
+  r.state = 'moving';
+  pushLog('task', r.id, `Won local auction for task ${r.taskId} → heading to ${goal.name}.`);
+}
+
+function handleBlockage(r){
+  if(r.state==='blocked') return;
+  r.state = 'blocked';
+  pushLog('fail', r.id, `Obstacle detected ahead at (${r.tempBlocked.c},${r.tempBlocked.r}). Path marked unsafe locally.`);
+  setTimeout(()=>{
+    if(!r.alive) return;
+    const newPath = findPath({c:Math.round(r.c), r:Math.round(r.r)}, {c:r.goal.c,r:r.goal.r}, [r.tempBlocked]);
+    if(newPath){
+      r.path = newPath; r.pathIdx = 0; r.progress = 0;
+      r.state = 'moving';
+      metrics.rerouteEvents++;
+      pushLog('reroute', r.id, `Local replan complete. New route found avoiding blocked cell. Notifying peers in range.`);
+      // notify peers who might also cross that cell
+      const affected = robots.filter(o=>o.id!==r.id && o.alive && o.path && o.path.some(p=>p.c===r.tempBlocked.c && p.r===r.tempBlocked.r));
+      affected.forEach(o=>{
+        o.tempBlocked = r.tempBlocked;
+        pushLog('comm', o.id, `Received obstacle notice from ${r.id} — updating local map.`);
+      });
+    } else {
+      pushLog('fail', r.id, `No alternate route found. Awaiting clearance.`);
+    }
+    renderMetrics();
+  }, 1400);
+}
+
+/* ======================= CONTROL EVENTS ======================= */
+document.getElementById('btn-obstacle').onclick = ()=>{
+  const alive = robots.filter(r=>r.alive && r.state!=='idle' && r.state!=='offline');
+  if(!alive.length) return;
+  const r = alive[Math.floor(Math.random()*alive.length)];
+  const nc = nextCellOf(r) || {c:r.c,r:r.r};
+  // pick a cell a couple steps ahead if possible
+  let cellAhead = nc;
+  if(r.path && r.pathIdx+2 < r.path.length) cellAhead = r.path[r.pathIdx+2];
+  r.tempBlocked = cellAhead;
+  pushLog('fail', 'SYSTEM', `Obstacle manually injected near Robot ${r.id}'s path at (${cellAhead.c},${cellAhead.r}).`);
+};
+
+document.getElementById('btn-fail').onclick = ()=>{
+  const alive = robots.filter(r=>r.alive);
+  if(!alive.length) return;
+  const r = alive[Math.floor(Math.random()*alive.length)];
+  r.alive = false;
+  r.state = 'offline';
+  pushLog('fail', r.id, `Heartbeat lost. Peers detect failure via missed broadcast (timeout).`);
+  setTimeout(()=>{
+    const taker = robots.filter(o=>o.alive).sort((a,b)=>pathRemaining(a)-pathRemaining(b))[0];
+    if(taker){
+      pushLog('task', taker.id, `Bid accepted — reassigning ${r.id}'s pending task ${r.taskId} to self.`);
+    }
+  }, 1000);
+};
+
+document.getElementById('btn-deadzone').onclick = ()=>{
+  const r = robots.find(x=>x.id==='A');
+  if(!r || !r.alive) return;
+  r.comms = false;
+  document.getElementById('net-pill').className = 'status-pill degraded';
+  document.getElementById('net-label').textContent = 'ROBOT A: COMMS LOST';
+  pushLog('comm', 'A', `Wi-Fi dead-zone entered. Falling back to local sensing + last-known peer state.`);
+  setTimeout(()=>{
+    if(r.alive){
+      r.comms = true;
+      document.getElementById('net-pill').className = 'status-pill';
+      document.getElementById('net-label').textContent = 'ALL PEERS CONNECTED';
+      pushLog('comm', 'A', `Mesh link restored. Resyncing local map with peers.`);
+    }
+  }, 4000);
+};
+
+document.getElementById('btn-reset').onclick = resetSim;
+
+/* ======================= RENDER ======================= */
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+
+function interpPos(r){
+  if(!r.path || r.pathIdx >= r.path.length){
+    return cellToPx(r.c, r.r);
+  }
+  const cur = r.path[r.pathIdx];
+  const next = r.path[r.pathIdx+1] || cur;
+  const p1 = cellToPx(cur.c, cur.r);
+  const p2 = cellToPx(next.c, next.r);
+  return { x: p1.x + (p2.x-p1.x)*r.progress, y: p1.y + (p2.y-p1.y)*r.progress };
+}
+
+function draw(){
+  ctx.clearRect(0,0,900,600);
+
+  // floor grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+  ctx.lineWidth = 1;
+  for(let c=0;c<=COLS;c++){
+    ctx.beginPath();
+    ctx.moveTo(OX-CELL/2+c*CELL, OY-CELL/2);
+    ctx.lineTo(OX-CELL/2+c*CELL, OY-CELL/2+ROWS*CELL);
+    ctx.stroke();
+  }
+  for(let r=0;r<=ROWS;r++){
+    ctx.beginPath();
+    ctx.moveTo(OX-CELL/2, OY-CELL/2+r*CELL);
+    ctx.lineTo(OX-CELL/2+COLS*CELL, OY-CELL/2+r*CELL);
+    ctx.stroke();
+  }
+
+  // shelves
+  shelves.forEach(s=>{
+    const p = cellToPx(s.c, s.r);
+    const w = s.w*CELL - 14, h = s.h*CELL - 14;
+    ctx.fillStyle = '#1E242C';
+    ctx.strokeStyle = '#323B46';
+    ctx.lineWidth = 1;
+    const x = p.x - CELL/2 + 7, y = p.y - CELL/2 + 7;
+    roundRect(ctx, x, y, w, h, 4);
+    ctx.fill(); ctx.stroke();
+    // shelf lines texture
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    for(let i=1;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(x, y + h*i/4);
+      ctx.lineTo(x+w, y + h*i/4);
+      ctx.stroke();
+    }
+  });
+
+  // stations
+  stations.forEach(s=>{
+    const p = cellToPx(s.c, s.r);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 15, 0, Math.PI*2);
+    ctx.fillStyle = '#1A2028';
+    ctx.fill();
+    ctx.strokeStyle = '#3A4552';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#8B93A1';
+    ctx.font = '600 10px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.name, p.x, p.y+3);
+  });
+
+  // temp obstacles
+  robots.forEach(r=>{
+    if(r.tempBlocked && (r.state==='blocked' || r.state==='moving')){
+      const p = cellToPx(r.tempBlocked.c, r.tempBlocked.r);
+      ctx.fillStyle = 'rgba(224,97,92,0.16)';
+      roundRect(ctx, p.x-CELL/2+6, p.y-CELL/2+6, CELL-12, CELL-12, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(224,97,92,0.6)';
+      ctx.setLineDash([4,3]);
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, p.x-CELL/2+6, p.y-CELL/2+6, CELL-12, CELL-12, 6);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#E0615C';
+      ctx.font = '600 16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('✕', p.x, p.y+5);
+    }
+  });
+
+  // robot planned paths
+  robots.forEach(r=>{
+    if(!r.alive || !r.path) return;
+    ctx.beginPath();
+    ctx.strokeStyle = cssVar(r.color);
+    ctx.globalAlpha = 0.28;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3,4]);
+    for(let i=r.pathIdx;i<r.path.length;i++){
+      const p = cellToPx(r.path[i].c, r.path[i].r);
+      if(i===r.pathIdx) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  });
+
+  // robots
+  robots.forEach(r=>{
+    const pos = r.alive ? interpPos(r) : cellToPx(r.c, r.r);
+    const col = cssVar(r.color);
+
+    if(!r.alive){
+      ctx.globalAlpha = 0.35;
+    }
+
+    // conflict-resolution ring: amber while slowing/negotiating, violet while actively rerouting
+    if(r.state==='negotiating' || r.state==='slowing' || r.state==='rerouting'){
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 22, 0, Math.PI*2);
+      ctx.strokeStyle = r.state==='rerouting' ? 'rgba(156,140,224,0.7)' : 'rgba(232,162,58,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([2,3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // body
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 16, 0, Math.PI*2);
+    ctx.fillStyle = '#14181D';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    let strokeCol = col;
+    if(r.state==='blocked') strokeCol = '#E0615C';
+    else if(r.state==='rerouting') strokeCol = '#9C8CE0';
+    else if(r.state==='offline') strokeCol = '#555';
+    ctx.strokeStyle = strokeCol;
+    ctx.stroke();
+
+    ctx.fillStyle = r.state==='offline' ? '#555' : col;
+    ctx.font = '700 12px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(r.id, pos.x, pos.y+4);
+
+    if(!r.comms && r.alive){
+      ctx.fillStyle = '#E0615C';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('📡✕', pos.x, pos.y-24);
+    }
+
+    ctx.globalAlpha = 1;
+  });
+}
+
+function roundRect(ctx,x,y,w,h,rad){
+  ctx.beginPath();
+  ctx.moveTo(x+rad,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rad);
+  ctx.arcTo(x+w,y+h,x,y+h,rad);
+  ctx.arcTo(x,y+h,x,y,rad);
+  ctx.arcTo(x,y,x+w,y,rad);
+  ctx.closePath();
+}
+
+/* ======================= SIDEBAR CARDS ======================= */
+function renderCards(){
+  const wrap = document.getElementById('robot-cards');
+  wrap.innerHTML = robots.map(r=>{
+    const col = cssVar(r.color);
+    const stateClass = 'state-' + r.state;
+    const battColor = r.battery > 40 ? cssVar('--green') : r.battery > 15 ? cssVar('--amber') : cssVar('--red');
+    return `
+    <div class="robot-card" style="border-left-color:${col}">
+      <div class="row1">
+        <div class="rid"><span class="swatch" style="background:${col}"></span>Robot ${r.id}</div>
+        <div class="state ${stateClass}">${r.state.toUpperCase()}</div>
+      </div>
+      <div class="task">${r.alive ? `task ${r.taskId} → ${r.goal.name}` : 'no active task'}</div>
+      <div class="barline">
+        <div class="lbl">BATT</div>
+        <div class="barwrap"><div class="barfill" style="width:${r.battery}%; background:${battColor}"></div></div>
+        <div class="pct">${Math.round(r.battery)}%</div>
+      </div>
+      <div class="barline">
+        <div class="lbl">PROG</div>
+        <div class="barwrap"><div class="barfill" style="width:${r.path ? Math.round((r.pathIdx/(r.path.length-1||1))*100) : 0}%; background:${col}"></div></div>
+        <div class="pct">${r.path ? Math.round((r.pathIdx/(r.path.length-1||1))*100) : 0}%</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderMetrics(){
+  document.getElementById('m-collisions').textContent = metrics.collisions;
+  document.getElementById('m-completed').textContent = metrics.completed;
+  document.getElementById('m-events').textContent = metrics.rerouteEvents;
+  if(metrics.actualTimeAccum > 0){
+    const speedup = Math.round(((metrics.baselineTimeEstimate - metrics.actualTimeAccum)/metrics.baselineTimeEstimate)*100);
+    document.getElementById('m-speedup').textContent = speedup + '%';
+  }
+}
+
+/* ======================= 3D MODE ======================= */
+let viewMode = '2d';
+let three = null; // lazily initialized
+
+const UNIT = 7; // world units per grid cell
+function gridToWorld(c, r){
+  return { x: (c - (COLS-1)/2) * UNIT, z: (r - (ROWS-1)/2) * UNIT };
+}
+
+function makeTextSprite(text, opts){
+  opts = opts || {};
+  const cnv = document.createElement('canvas');
+  const ctx2 = cnv.getContext('2d');
+  const fontSize = opts.fontSize || 64;
+  cnv.width = 256; cnv.height = 96;
+  ctx2.font = `700 ${fontSize}px IBM Plex Mono, monospace`;
+  ctx2.textAlign = 'center';
+  ctx2.textBaseline = 'middle';
+  ctx2.fillStyle = opts.color || '#E7EAEE';
+  ctx2.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx2.shadowBlur = 10;
+  ctx2.fillText(text, 128, 52);
+  const tex = new THREE.CanvasTexture(cnv);
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent:true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(opts.w || 5.5, (opts.w || 5.5) * (96/256), 1);
+  sprite.renderOrder = 999;
+  return sprite;
+}
+
+function initThree(){
+  const canvas3d = document.getElementById('stage3d');
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(900, 600, false);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x12161B, 90, 200);
+
+  const camera = new THREE.PerspectiveCamera(42, 900/600, 0.1, 500);
+
+  // lighting
+  scene.add(new THREE.AmbientLight(0x8899aa, 0.65));
+  const key = new THREE.DirectionalLight(0xffffff, 0.85);
+  key.position.set(40, 60, 30);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x4fc3d9, 0.25);
+  rim.position.set(-40, 20, -30);
+  scene.add(rim);
+
+  // floor
+  const floorW = COLS*UNIT + 10, floorD = ROWS*UNIT + 10;
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(floorW, floorD),
+    new THREE.MeshStandardMaterial({ color:0x171B21, roughness:0.95, metalness:0.05 })
+  );
+  floor.rotation.x = -Math.PI/2;
+  scene.add(floor);
+
+  const grid = new THREE.GridHelper(Math.max(floorW,floorD), COLS+ROWS, 0x2A323C, 0x232A32);
+  grid.position.y = 0.02;
+  scene.add(grid);
+
+  // shelves
+  const shelfMeshes = [];
+  shelves.forEach(s=>{
+    const w = s.w*UNIT - 1.2, d = s.h*UNIT - 1.2, h = 9.5;
+    const cc = s.c + s.w/2 - 0.5, rc = s.r + s.h/2 - 0.5;
+    const pos = gridToWorld(cc, rc);
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const mat = new THREE.MeshStandardMaterial({ color:0x232A32, roughness:0.7, metalness:0.25 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(pos.x, h/2, pos.z);
+    scene.add(mesh);
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color:0x3A4552 })
+    );
+    edges.position.copy(mesh.position);
+    scene.add(edges);
+    shelfMeshes.push(mesh);
+  });
+
+  // stations
+  stations.forEach(s=>{
+    const pos = gridToWorld(s.c, s.r);
+    const ring = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.1, 3.1, 0.25, 28, 1, true),
+      new THREE.MeshStandardMaterial({ color:0x3A4552, side:THREE.DoubleSide, roughness:0.6 })
+    );
+    ring.position.set(pos.x, 0.15, pos.z);
+    scene.add(ring);
+    const pad = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.9, 2.9, 0.12, 28),
+      new THREE.MeshStandardMaterial({ color:0x1A2028, roughness:0.8 })
+    );
+    pad.position.set(pos.x, 0.12, pos.z);
+    scene.add(pad);
+    const label = makeTextSprite(s.name, { color:'#8B93A1', w:6 });
+    label.position.set(pos.x, 1.2, pos.z);
+    scene.add(label);
+  });
+
+  // robot groups
+  const robotVis = {};
+  robots.forEach(r=>{
+    const col = cssVar(r.color);
+    const group = new THREE.Group();
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color: col, roughness:0.35, metalness:0.5, emissive:col, emissiveIntensity:0.18 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.3, 1.6, 24), bodyMat);
+    body.position.y = 1.0;
+    group.add(body);
+
+    const domeMat = new THREE.MeshStandardMaterial({ color:0x14181D, roughness:0.2, metalness:0.7 });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.1, 20, 16, 0, Math.PI*2, 0, Math.PI/2), domeMat);
+    dome.position.y = 1.8;
+    group.add(dome);
+
+    const beaconMat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity:0.9 });
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), beaconMat);
+    beacon.position.y = 2.5;
+    group.add(beacon);
+
+    const ringGeo = new THREE.RingGeometry(2.6, 3.3, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color:0xE8A23A, transparent:true, opacity:0, side:THREE.DoubleSide });
+    const negotiateRing = new THREE.Mesh(ringGeo, ringMat);
+    negotiateRing.rotation.x = -Math.PI/2;
+    negotiateRing.position.y = 0.05;
+    group.add(negotiateRing);
+
+    const label = makeTextSprite(r.id, { color:'#0d0f12', w:2.6, fontSize:70 });
+    label.position.y = 4.2;
+    group.add(label);
+
+    scene.add(group);
+    robotVis[r.id] = { group, beaconMat, negotiateRing, bodyMat, pathLine:null, obstacleMesh:null };
+  });
+
+  three = { renderer, scene, camera, robotVis, shelfMeshes, obstacleGroup: new THREE.Group() };
+  scene.add(three.obstacleGroup);
+
+  // orbit state
+  three.orbit = { az: Math.PI*0.22, el: 0.62, radius: 78, target: new THREE.Vector3(0, 2, 0) };
+  updateCamera();
+
+  // mouse controls
+  let dragging = false, lastX=0, lastY=0;
+  canvas3d.addEventListener('mousedown', e=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas3d.classList.add('grabbing'); });
+  window.addEventListener('mouseup', ()=>{ dragging=false; canvas3d.classList.remove('grabbing'); });
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const dx = e.clientX-lastX, dy = e.clientY-lastY;
+    lastX=e.clientX; lastY=e.clientY;
+    three.orbit.az -= dx*0.006;
+    three.orbit.el = Math.max(0.15, Math.min(1.4, three.orbit.el - dy*0.005));
+    updateCamera();
+  });
+  canvas3d.addEventListener('wheel', e=>{
+    e.preventDefault();
+    three.orbit.radius = Math.max(35, Math.min(150, three.orbit.radius + e.deltaY*0.08));
+    updateCamera();
+  }, { passive:false });
+
+  // touch support (basic)
+  let touchLast = null;
+  canvas3d.addEventListener('touchstart', e=>{ touchLast = e.touches[0]; });
+  canvas3d.addEventListener('touchmove', e=>{
+    if(!touchLast) return;
+    const t = e.touches[0];
+    const dx = t.clientX-touchLast.clientX, dy = t.clientY-touchLast.clientY;
+    touchLast = t;
+    three.orbit.az -= dx*0.006;
+    three.orbit.el = Math.max(0.15, Math.min(1.4, three.orbit.el - dy*0.005));
+    updateCamera();
+  }, { passive:true });
+  canvas3d.addEventListener('touchend', ()=>{ touchLast=null; });
+}
+
+function updateCamera(){
+  const { az, el, radius, target } = three.orbit;
+  const x = target.x + radius * Math.sin(el) * Math.sin(az);
+  const y = target.y + radius * Math.cos(el);
+  const z = target.z + radius * Math.sin(el) * Math.cos(az);
+  three.camera.position.set(x, y, z);
+  three.camera.lookAt(target);
+}
+
+function render3D(){
+  if(!three) return;
+
+  robots.forEach(r=>{
+    const vis = three.robotVis[r.id];
+    if(!vis) return;
+    const pos2d = r.alive ? interpPos(r) : cellToPx(r.c, r.r);
+    // convert 2D canvas coords back to grid fractional coords for accurate 3D placement
+    const gc = (pos2d.x - OX)/CELL, gr = (pos2d.y - OY)/CELL;
+    const wp = gridToWorld(gc, gr);
+    vis.group.position.x = wp.x;
+    vis.group.position.z = wp.z;
+    vis.group.visible = true;
+
+    const bob = r.state==='moving' ? Math.sin(tick*0.25 + r.id.charCodeAt(0)) * 0.12 : 0;
+    vis.group.position.y = bob;
+
+    // face direction of travel
+    const nc = nextCellOf(r);
+    if(nc){
+      const npos = gridToWorld(nc.c, nc.r);
+      const dx = npos.x - wp.x, dz = npos.z - wp.z;
+      if(Math.abs(dx)+Math.abs(dz) > 0.01){
+        vis.group.rotation.y = Math.atan2(dx, dz);
+      }
+    }
+
+    vis.beaconMat.emissiveIntensity = r.alive ? (0.6 + 0.4*Math.sin(tick*0.3)) : 0.1;
+    vis.bodyMat.opacity = r.alive ? 1 : 0.3;
+    vis.bodyMat.transparent = !r.alive;
+
+    // negotiate ring pulse — active during any conflict-resolution state
+    const ringActive = r.state==='negotiating' || r.state==='slowing' || r.state==='rerouting';
+    const targetOpacity = ringActive ? (0.35 + 0.25*Math.sin(tick*0.4)) : 0;
+    vis.negotiateRing.material.opacity += (targetOpacity - vis.negotiateRing.material.opacity) * 0.2;
+    let ringColor = 0xE8A23A; // amber = slowing/negotiating
+    if(r.state==='blocked') ringColor = 0xE0615C;
+    else if(r.state==='rerouting') ringColor = 0x9C8CE0; // violet = active A* replan
+    vis.negotiateRing.material.color.set(ringColor);
+
+    // remaining path line
+    if(vis.pathLine){ three.scene.remove(vis.pathLine); vis.pathLine=null; }
+    if(r.alive && r.path && r.pathIdx < r.path.length-1){
+      const pts = [];
+      for(let i=r.pathIdx;i<r.path.length;i++){
+        const w = gridToWorld(r.path[i].c, r.path[i].r);
+        pts.push(new THREE.Vector3(w.x, 0.3, w.z));
+      }
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat = new THREE.LineDashedMaterial({ color: cssVar(r.color), dashSize:1.2, gapSize:0.8, transparent:true, opacity:0.55 });
+      const line = new THREE.Line(geo, mat);
+      line.computeLineDistances();
+      three.scene.add(line);
+      vis.pathLine = line;
+    }
+  });
+
+  // obstacle markers
+  while(three.obstacleGroup.children.length) three.obstacleGroup.remove(three.obstacleGroup.children[0]);
+  const shown = new Set();
+  robots.forEach(r=>{
+    if(r.tempBlocked && (r.state==='blocked' || r.state==='moving')){
+      const key = r.tempBlocked.c+','+r.tempBlocked.r;
+      if(shown.has(key)) return;
+      shown.add(key);
+      const wp = gridToWorld(r.tempBlocked.c, r.tempBlocked.r);
+      const pulse = 0.5 + 0.5*Math.sin(tick*0.3);
+      const geo = new THREE.BoxGeometry(UNIT-1.4, 2.2, UNIT-1.4);
+      const mat = new THREE.MeshBasicMaterial({ color:0xE0615C, transparent:true, opacity:0.18 + pulse*0.12, wireframe:false });
+      const box = new THREE.Mesh(geo, mat);
+      box.position.set(wp.x, 1.1, wp.z);
+      three.obstacleGroup.add(box);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xE0615C, transparent:true, opacity:0.7 }));
+      edges.position.copy(box.position);
+      three.obstacleGroup.add(edges);
+    }
+  });
+
+  three.renderer.render(three.scene, three.camera);
+}
+
+document.getElementById('btn-3d').onclick = ()=>{
+  viewMode = viewMode==='2d' ? '3d' : '2d';
+  const btn = document.getElementById('btn-3d');
+  const c3 = document.getElementById('stage3d');
+  const c2 = document.getElementById('stage');
+  const hint = document.getElementById('hint3d');
+  if(viewMode==='3d'){
+    if(!three) initThree();
+    btn.classList.add('on'); btn.textContent = '🔲 2D view';
+    c3.classList.add('active'); c2.classList.add('hidden3d');
+    hint.classList.add('show');
+  } else {
+    btn.classList.remove('on'); btn.textContent = '🧊 3D view';
+    c3.classList.remove('active'); c2.classList.remove('hidden3d');
+    hint.classList.remove('show');
+  }
+};
+
+/* ======================= MAIN LOOP ======================= */
+function loop(){
+  if(running){
+    stepRobots();
+    if(viewMode==='3d'){ render3D(); } else { draw(); }
+    renderCards();
+  }
+  requestAnimationFrame(loop);
+}
+
+resetSim();
+draw();
+renderCards();
+loop();
+setInterval(renderMetrics, 500);
+</script>
+</body>
+</html>
