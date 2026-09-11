@@ -1,503 +1,44 @@
 """
-Edge-AI AMR Fleet Coordination Demo (Python/Tkinter)
+Edge-AI AMR Fleet Coordination Demo (Python/Tkinter) — Presentation & Control Room Layer.
 
-Status mapping from the supplied HTML:
-IMPLEMENTED HERE:
-- 11x8 warehouse grid with rack obstacles and named stations
-- Per-robot A* path planning with Manhattan heuristic
-- Decentralized-style local robot state and peer conflict checks
-- Vertex + edge/swap conflict detection
-- Yield/slow-down then local re-route around contested cell
-- Dynamic obstacle injection and peer map notification
-- Robot failure injection and simulated task takeover notification
-- Communication-loss simulation for Robot A
-- Battery/progress/status monitoring
-- Event stream + collision/task/reroute/baseline metrics
-- 2D dashboard and interactive pseudo-3D/isometric view
-
-PROPOSED / NOT IMPLEMENTED:
-- Real radio/Wi-Fi P2P networking between physical robots
-- Real sensors / SLAM / motor control
-- Congestion-weighted custom A* cost function
-- True distributed task auction with message transport and consensus
-
-This program intentionally mirrors the supplied browser demo while being
-self-contained in Python's standard library (Tkinter).
+The simulation and decentralized coordination engine is decoupled into the `backend/` package:
+- Space-Time A* MAPF planner (4D search preventing vertex & swap conflicts)
+- Decentralized Reservation Table
+- Multi-factor Dynamic Priority Engine (anti-starvation aging & battery protection)
+- Distributed Conflict Resolution (junction yield, space-time detours, sidestep)
+- Decentralized P2P Mesh Network with comms-loss simulation
+- Contract Net Protocol Task Auctions
 """
 
 from __future__ import annotations
 
-import heapq
 import math
 import random
 import time
 import tkinter as tk
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from backend import (
+    BG,
+    CELL_SIZE as CELL,
+    COLS,
+    DEFAULT_SIM_SPEED,
+    PANEL,
+    ROBOT_COLORS,
+    ROWS,
+    SHELVES,
+    SLOW_TICKS,
+    STATIONS,
+    TICK_MS,
+    ConflictType,
+    FleetModel,
+    Point,
+    ResolutionAction,
+    Robot,
+    TaskPriority,
+)
 
-COLS, ROWS = 11, 8
-CELL = 78
 CANVAS_W, CANVAS_H = 900, 600
-SLOW_TICKS = 45
-TICK_MS = 33
-
-BG = "#12161B"
-PANEL = "#191E25"
-PANEL2 = "#1E242C"
-LINE = "#2A323C"
-TEXT = "#E7EAEE"
-MUTED = "#8B93A1"
-AMBER = "#E8A23A"
-CYAN = "#4FC3D9"
-GREEN = "#5FBE7A"
-RED = "#E0615C"
-VIOLET = "#9C8CE0"
-ROBOT_COLORS = {"A": CYAN, "B": AMBER, "C": VIOLET}
-
-SHELVES = [
-    (2, 1, 1, 2), (2, 5, 1, 2),
-    (5, 1, 1, 2), (5, 5, 1, 2),
-    (8, 1, 1, 2), (8, 5, 1, 2),
-]
-
-STATIONS = [
-    ("P1", 0, 0), ("P2", 10, 0), ("P3", 0, 7),
-    ("P4", 10, 7), ("DOCK", 5, 7),
-]
-
-
-@dataclass
-class Robot:
-    id: str
-    c: float
-    r: float
-    battery: float
-    goal: Tuple[str, int, int]
-    path: Optional[List[Tuple[int, int]]]
-    path_idx: int = 0
-    progress: float = 0.0
-    state: str = "moving"
-    comms: bool = True
-    alive: bool = True
-    task_id: str = "t000"
-    speed: float = 0.008
-    blocked_ticks: int = 0
-    steps_taken: int = 0
-    conflict_ticks: int = 0
-    temp_blocked: Optional[Tuple[int, int]] = None
-    idle_until: float = 0.0
-
-
-class FleetModel:
-    def __init__(self, log_callback=None, metrics_callback=None):
-        self.log_callback = log_callback
-        self.metrics_callback = metrics_callback
-        self.robots: List[Robot] = []
-        self.tick = 0
-        self.sim_speed = 1.0
-        self.metrics = {
-            "collisions": 0,
-            "completed": 0,
-            "reroute_events": 0,
-            "baseline_time_estimate": 0.0,
-            "actual_time_accum": 0.0,
-        }
-        self.failed_obstacles = set()
-        self.manual_obstacles = set()
-        self.reset()
-
-    @staticmethod
-    def in_bounds(c: int, r: int) -> bool:
-        return 0 <= c < COLS and 0 <= r < ROWS
-
-    @staticmethod
-    def blocked(c: int, r: int) -> bool:
-        return any(sc <= c < sc + w and sr <= r < sr + h for sc, sr, w, h in SHELVES)
-
-    def find_path(
-        self,
-        start: Tuple[int, int],
-        goal: Tuple[int, int],
-        dynamic_blocked: Optional[List[Tuple[int, int]]] = None,
-    ) -> Optional[List[Tuple[int, int]]]:
-        """A* on a 4-neighbor grid; O(V log V) with heap priority queue."""
-        # Failed robots remain physically present and are treated as permanent obstacles.
-        bset = set(dynamic_blocked or []) | set(self.failed_obstacles) | set(self.manual_obstacles)
-        # Never block the robot's own current start cell while replanning.
-        bset.discard(start)
-        if self.blocked(*goal):
-            return None
-
-        def h(node: Tuple[int, int]) -> int:
-            return abs(node[0] - goal[0]) + abs(node[1] - goal[1])
-
-        open_heap = [(h(start), 0, start)]
-        came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        g_score = {start: 0}
-        closed = set()
-
-        while open_heap:
-            _, g, cur = heapq.heappop(open_heap)
-            if cur in closed:
-                continue
-            closed.add(cur)
-            if cur == goal:
-                break
-
-            c, r = cur
-            for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                nxt = (c + dc, r + dr)
-                if not self.in_bounds(*nxt) or self.blocked(*nxt) or nxt in bset:
-                    continue
-                ng = g + 1
-                if ng < g_score.get(nxt, 10**9):
-                    g_score[nxt] = ng
-                    came_from[nxt] = cur
-                    heapq.heappush(open_heap, (ng + h(nxt), ng, nxt))
-
-        if goal not in g_score and start != goal:
-            return None
-
-        path = [goal]
-        cur = goal
-        while cur != start:
-            cur = came_from.get(cur)
-            if cur is None:
-                return None
-            path.append(cur)
-        path.reverse()
-        return path
-
-    def rand_station(self, exclude_c: int, exclude_r: int):
-        choices = [s for s in STATIONS if not (s[1] == exclude_c and s[2] == exclude_r) and (s[1], s[2]) not in self.failed_obstacles]
-        if not choices:
-            choices = [s for s in STATIONS if not (s[1] == exclude_c and s[2] == exclude_r)]
-        return random.choice(choices)
-
-    def make_robot(self, rid: str, c: int, r: int, battery: float) -> Robot:
-        goal = self.rand_station(c, r)
-        return Robot(
-            id=rid,
-            c=float(c), r=float(r), battery=battery,
-            goal=goal,
-            path=self.find_path((c, r), (goal[1], goal[2]), []),
-            task_id=f"t{random.randint(100, 999)}",
-            speed=0.0075 + random.random() * 0.0025,
-        )
-
-    def reset(self):
-        self.metrics = {
-            "collisions": 0, "completed": 0, "reroute_events": 0,
-            "baseline_time_estimate": 0.0, "actual_time_accum": 0.0,
-        }
-        self.tick = 0
-        self.failed_obstacles = set()
-        self.manual_obstacles = set()
-        self.robots = [
-            self.make_robot("A", 0, 2, 82),
-            self.make_robot("B", 4, 0, 64),
-            self.make_robot("C", 8, 3, 91),
-        ]
-        self.log("comm", "SYSTEM", "Mesh initialized. 3 peers discovered, no central coordinator.")
-        self.emit_metrics()
-
-    def log(self, tag: str, who: str, message: str):
-        if self.log_callback:
-            self.log_callback(tag, who, message)
-
-    def emit_metrics(self):
-        if self.metrics_callback:
-            self.metrics_callback(self.metrics)
-
-    @staticmethod
-    def path_remaining(robot: Robot) -> int:
-        return 999 if not robot.path else len(robot.path) - robot.path_idx
-
-    @staticmethod
-    def next_cell(robot: Robot) -> Optional[Tuple[int, int]]:
-        if not robot.path or robot.path_idx >= len(robot.path) - 1:
-            return None
-        return robot.path[robot.path_idx + 1]
-
-    def assign_new_task(self, robot: Robot):
-        if not robot.alive:
-            return
-        goal = self.rand_station(round(robot.c), round(robot.r))
-        robot.goal = goal
-        robot.task_id = f"t{random.randint(100, 999)}"
-        db = [robot.temp_blocked] if robot.temp_blocked else []
-        robot.path = self.find_path((round(robot.c), round(robot.r)), (goal[1], goal[2]), db)
-        robot.path_idx = 0
-        robot.progress = 0
-        robot.steps_taken = 0
-        robot.state = "moving"
-        robot.idle_until = 0
-        self.log("task", robot.id, f"Won local auction for task {robot.task_id} → heading to {goal[0]}.")
-
-    def handle_blockage(self, robot: Robot):
-        if robot.state == "blocked" or not robot.temp_blocked:
-            return
-        robot.state = "blocked"
-        bc, br = robot.temp_blocked
-        self.log("fail", robot.id, f"Obstacle detected ahead at ({bc},{br}). Path marked unsafe locally.")
-
-        new_path = self.find_path(
-            (round(robot.c), round(robot.r)),
-            (robot.goal[1], robot.goal[2]),
-            [robot.temp_blocked],
-        )
-        if new_path:
-            robot.path = new_path
-            robot.path_idx = 0
-            robot.progress = 0
-            robot.state = "moving"
-            self.metrics["reroute_events"] += 1
-            self.log("reroute", robot.id, "Local replan complete. New route found avoiding blocked cell. Notifying peers in range.")
-            for other in self.robots:
-                if other.id == robot.id or not other.alive or not other.path:
-                    continue
-                if robot.temp_blocked in other.path:
-                    other.temp_blocked = robot.temp_blocked
-                    self.log("comm", other.id, f"Received obstacle notice from {robot.id} — updating local map.")
-        else:
-            self.log("fail", robot.id, "No alternate route found. Awaiting clearance.")
-        self.emit_metrics()
-
-    def step(self):
-        self.tick += 1
-        now = time.monotonic()
-
-        # Assign next task after an idle pause without threads/timers.
-        for robot in self.robots:
-            if robot.alive and robot.state == "idle" and robot.idle_until and now >= robot.idle_until:
-                self.assign_new_task(robot)
-
-        for robot in self.robots:
-            if not robot.alive or robot.state == "offline":
-                continue
-
-            if robot.state == "moving":
-                robot.battery = max(0.0, robot.battery - 0.012)
-
-            if not robot.path or robot.path_idx >= len(robot.path) - 1:
-                if robot.state != "idle":
-                    robot.state = "idle"
-                    self.metrics["completed"] += 1
-                    self.metrics["actual_time_accum"] += robot.steps_taken
-                    self.metrics["baseline_time_estimate"] += robot.steps_taken * 1.28
-                    self.log("task", robot.id, f"Reached {robot.goal[0]}. Task {robot.task_id} complete. Broadcasting availability.")
-                    robot.idle_until = now + 0.9
-                    self.emit_metrics()
-                continue
-
-            nc = self.next_cell(robot)
-            if nc is None:
-                continue
-
-            # Vertex + edge/swap conflict detection.
-            conflict = None
-            conflict_is_occupied = False
-            for other in self.robots:
-                if other.id == robot.id or not other.alive:
-                    continue
-                other_cell = (round(other.c), round(other.r))
-                onext = self.next_cell(other)
-
-                # A robot may never enter a cell that another live robot still occupies.
-                # This also protects stations while an idle robot is parked there.
-                occupied = nc == other_cell
-                vertex = onext is not None and onext == nc
-                edge = (
-                    onext is not None and
-                    onext == (round(robot.c), round(robot.r)) and
-                    nc == other_cell
-                )
-                if occupied or vertex or edge:
-                    conflict = other
-                    conflict_is_occupied = occupied and onext is None
-                    break
-
-            if conflict:
-                rd = self.path_remaining(robot)
-                cd = self.path_remaining(conflict)
-                # If the other robot is stationary in the requested cell, it must keep
-                # priority. Otherwise use remaining path length + robot ID tie-break.
-                i_win = False if conflict_is_occupied else (rd < cd or (rd == cd and robot.id < conflict.id))
-                if i_win:
-                    robot.state = "moving"
-                    robot.conflict_ticks = 0
-                else:
-                    robot.conflict_ticks += 1
-                    if robot.conflict_ticks <= SLOW_TICKS:
-                        if robot.state != "slowing":
-                            robot.state = "slowing"
-                            self.log(
-                                "conflict", robot.id,
-                                f"Single-lane segment ({nc[0]},{nc[1]}) contested with Robot {conflict.id}. Cutting speed ~85% to let {conflict.id} clear it first.",
-                            )
-                        robot.progress += robot.speed * self.sim_speed * 0.15
-                        continue
-                    robot.state = "rerouting"
-                    new_path = self.find_path(
-                        (round(robot.c), round(robot.r)),
-                        (robot.goal[1], robot.goal[2]),
-                        [nc],
-                    )
-                    if new_path and len(new_path) > 1:
-                        robot.path = new_path
-                        robot.path_idx = 0
-                        robot.progress = 0
-                        robot.state = "moving"
-                        robot.conflict_ticks = 0
-                        self.metrics["reroute_events"] += 1
-                        self.log("reroute", robot.id, f"No timing gap opened at ({nc[0]},{nc[1]}) — ran A* treating it as reserved by {conflict.id}. Alternate route found.")
-                        self.emit_metrics()
-                    else:
-                        self.log("fail", robot.id, f"A* found no alternate route around ({nc[0]},{nc[1]}) — holding and retrying.")
-                        robot.conflict_ticks = 0
-                    continue
-            elif robot.state in ("negotiating", "slowing", "rerouting"):
-                robot.state = "moving"
-                robot.conflict_ticks = 0
-
-            if robot.temp_blocked == nc:
-                self.handle_blockage(robot)
-                continue
-
-            if robot.state == "blocked":
-                continue
-
-            robot.progress += robot.speed * self.sim_speed
-            if robot.progress >= 1:
-                robot.progress = 0
-                robot.c, robot.r = float(nc[0]), float(nc[1])
-                robot.path_idx += 1
-                robot.steps_taken += 1
-                robot.state = "moving"
-
-        # Safety metric: detect actual coincident occupied cells after moves.
-        alive_cells = {}
-        for robot in self.robots:
-            if not robot.alive:
-                continue
-            pos = (round(robot.c), round(robot.r))
-            if pos in alive_cells and alive_cells[pos] != robot.id:
-                self.metrics["collisions"] += 1
-                self.log("fail", "SYSTEM", f"Collision detected between Robot {alive_cells[pos]} and Robot {robot.id} at {pos}.")
-            alive_cells[pos] = robot.id
-
-    def place_manual_obstacle(self, cell):
-        c, r = cell
-        if not self.in_bounds(c, r) or self.blocked(c, r):
-            return False
-        if cell in self.failed_obstacles or cell in self.manual_obstacles:
-            return False
-        # Do not place an obstacle directly underneath a live robot.
-        if any(robot.alive and (round(robot.c), round(robot.r)) == cell for robot in self.robots):
-            return False
-        self.manual_obstacles.add(cell)
-        self.log("fail", "SYSTEM", f"Live obstacle placed at ({c},{r}). All robots update their local map.")
-        self.replan_around_obstacle(cell)
-        self.emit_metrics()
-        return True
-
-    def remove_manual_obstacle(self, cell):
-        if cell not in self.manual_obstacles:
-            return False
-        self.manual_obstacles.remove(cell)
-        self.log("comm", "SYSTEM", f"Live obstacle removed from ({cell[0]},{cell[1]}). Robots may use the cell again.")
-        for robot in self.robots:
-            if not robot.alive:
-                continue
-            current = (round(robot.c), round(robot.r))
-            new_path = self.find_path(current, (robot.goal[1], robot.goal[2]), [robot.temp_blocked] if robot.temp_blocked else [])
-            if new_path:
-                robot.path = new_path
-                robot.path_idx = 0
-                robot.progress = 0
-                if robot.state == "blocked":
-                    robot.state = "moving"
-        self.emit_metrics()
-        return True
-
-    def replan_around_obstacle(self, obstacle):
-        for robot in self.robots:
-            if not robot.alive:
-                continue
-            current = (round(robot.c), round(robot.r))
-            if obstacle not in (robot.path or []) and robot.temp_blocked != obstacle:
-                continue
-            new_path = self.find_path(current, (robot.goal[1], robot.goal[2]), [robot.temp_blocked] if robot.temp_blocked and robot.temp_blocked != obstacle else [])
-            if new_path:
-                robot.path = new_path
-                robot.path_idx = 0
-                robot.progress = 0
-                robot.state = "rerouting"
-                robot.conflict_ticks = 0
-                self.metrics["reroute_events"] += 1
-                self.log("reroute", robot.id, f"Rerouted around live obstacle at {obstacle}.")
-            else:
-                robot.state = "blocked"
-                self.log("fail", robot.id, f"Live obstacle at {obstacle} blocks the current route; no alternate path found.")
-
-    def inject_obstacle(self):
-        active = [r for r in self.robots if r.alive and r.state not in ("idle", "offline")]
-        if not active:
-            return
-        robot = random.choice(active)
-        nc = self.next_cell(robot) or (round(robot.c), round(robot.r))
-        if robot.path and robot.path_idx + 2 < len(robot.path):
-            nc = robot.path[robot.path_idx + 2]
-        robot.temp_blocked = nc
-        self.log("fail", "SYSTEM", f"Obstacle manually injected near Robot {robot.id}'s path at ({nc[0]},{nc[1]}).")
-
-    def fail_robot(self):
-        alive = [r for r in self.robots if r.alive]
-        if not alive:
-            return
-        failed = random.choice(alive)
-        failed_cell = (round(failed.c), round(failed.r))
-        failed.alive = False
-        failed.state = "offline"
-        # A failed robot stays physically in the warehouse and becomes an obstacle.
-        self.failed_obstacles.add(failed_cell)
-        self.log("fail", failed.id, f"Heartbeat lost. Robot remains at {failed_cell} and is now treated as a permanent obstacle.")
-
-        # Replan every live robot whose current route crosses the failed robot.
-        for robot in self.robots:
-            if not robot.alive:
-                continue
-            current = (round(robot.c), round(robot.r))
-            if failed_cell in (robot.path or []):
-                if robot.goal and (robot.goal[1], robot.goal[2]) == failed_cell:
-                    robot.goal = self.rand_station(current[0], current[1])
-                    robot.task_id = f"t{random.randint(100, 999)}"
-                new_path = self.find_path(current, (robot.goal[1], robot.goal[2]), robot.temp_blocked and [robot.temp_blocked] or [])
-                if new_path:
-                    robot.path = new_path
-                    robot.path_idx = 0
-                    robot.progress = 0
-                    robot.state = "moving"
-                    robot.conflict_ticks = 0
-                    self.metrics["reroute_events"] += 1
-                    self.log("reroute", robot.id, f"Rerouted around failed Robot {failed.id} at {failed_cell}; failure is now a warehouse obstacle.")
-
-        self.emit_metrics()
-        takers = sorted((r for r in self.robots if r.alive), key=self.path_remaining)
-        if takers:
-            taker = takers[0]
-            self.log("task", taker.id, f"Bid accepted — reassigning {failed.id}'s pending task {failed.task_id} to self.")
-
-    def set_robot_a_comms(self, enabled: bool):
-        robot = next((r for r in self.robots if r.id == "A"), None)
-        if not robot or not robot.alive:
-            return
-        robot.comms = enabled
-        if enabled:
-            self.log("comm", "A", "Mesh link restored. Resyncing local map with peers.")
-        else:
-            self.log("comm", "A", "Wi-Fi dead-zone entered. Falling back to local sensing + last-known peer state.")
 
 
 class FleetDashboard(tk.Tk):
@@ -662,7 +203,7 @@ class FleetDashboard(tk.Tk):
         title_box.pack(side="left")
         tk.Label(title_box, text="LIVE WAREHOUSE MAP", bg=self.ui["surface"], fg=self.ui["text"],
                  font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        tk.Label(title_box, text="11 × 8 grid • local A* • peer conflict negotiation", bg=self.ui["surface"],
+        tk.Label(title_box, text="11 × 8 grid • Space-Time MAPF • Decentralized P2P Conflict Resolution", bg=self.ui["surface"],
                  fg=self.ui["muted"], font=("Segoe UI", 8)).pack(anchor="w")
 
         # Simulation speed controls
@@ -733,18 +274,37 @@ class FleetDashboard(tk.Tk):
         console = self._card(self, self.ui["surface"])
         console.pack(fill="x", padx=16, pady=(0, 14))
         console_head = tk.Frame(console, bg=self.ui["surface"])
-        console_head.pack(fill="x", padx=13, pady=(9, 4))
-        tk.Label(console_head, text="DECENTRALIZED EVENT STREAM", bg=self.ui["surface"], fg=self.ui["text"],
+        console_head.pack(fill="x", padx=13, pady=(9, 6))
+
+        c_left = tk.Frame(console_head, bg=self.ui["surface"])
+        c_left.pack(side="left")
+        tk.Label(c_left, text="DECENTRALIZED EVENT CONSOLE", bg=self.ui["surface"], fg=self.ui["cyan"],
                  font=("Segoe UI", 9, "bold")).pack(side="left")
-        tk.Label(console_head, text="live peer decisions • no central controller", bg=self.ui["surface"],
-                 fg=self.ui["muted"], font=("Segoe UI", 8)).pack(side="right")
-        self.log_text = tk.Text(console, height=6, bg="#0B1119", fg=self.ui["text"], insertbackground=self.ui["text"],
-                                bd=0, font=("Consolas", 9), wrap="word", padx=10, pady=8)
-        self.log_text.pack(fill="x", padx=9, pady=(0, 9))
+        self.log_count_var = tk.StringVar(value="0 events")
+        tk.Label(c_left, textvariable=self.log_count_var, bg=self.ui["surface2"], fg=self.ui["muted"],
+                 font=("Segoe UI", 7, "bold"), padx=6, pady=1).pack(side="left", padx=(8, 0))
+
+        tk.Button(console_head, text="Clear Console", command=self.clear_console, bg=self.ui["surface2"], fg=self.ui["muted"],
+                  activebackground=self.ui["surface3"], activeforeground=self.ui["text"], bd=0, font=("Segoe UI", 8),
+                  padx=8, pady=2, cursor="hand2").pack(side="right")
+        tk.Label(console_head, text="live peer decisions • Space-Time MAPF • no central controller", bg=self.ui["surface"],
+                 fg=self.ui["muted"], font=("Segoe UI", 8)).pack(side="right", padx=(0, 12))
+
+        log_container = tk.Frame(console, bg="#0B1119", bd=0)
+        log_container.pack(fill="x", padx=9, pady=(0, 9))
+
+        log_scroll = tk.Scrollbar(log_container, orient="vertical", width=9, relief="flat", bd=0)
+        self.log_text = tk.Text(log_container, height=8, bg="#0B1119", fg=self.ui["text"], insertbackground=self.ui["text"],
+                                yscrollcommand=log_scroll.set, bd=0, font=("Consolas", 9), wrap="word", padx=10, pady=8)
+        log_scroll.configure(command=self.log_text.yview)
+        log_scroll.pack(side="right", fill="y")
+        self.log_text.pack(side="left", fill="both", expand=True)
+
         self.log_text.configure(state="disabled")
-        for tag, color in [("comm", self.ui["cyan"]), ("conflict", self.ui["amber"]),
+        for tag, color in [("comm", "#52D1C4"), ("conflict", self.ui["amber"]),
                            ("reroute", self.ui["violet"]), ("fail", self.ui["red"]),
-                           ("task", self.ui["green"]), ("time", "#66758A")]:
+                           ("task", self.ui["green"]), ("mapf", self.ui["cyan"]),
+                           ("time", "#66758A")]:
             self.log_text.tag_configure(tag, foreground=color)
 
     def _pill(self, parent, text, cmd, active=False):
@@ -784,15 +344,26 @@ class FleetDashboard(tk.Tk):
             self.btn_2d.configure(bg=self.ui["surface2"], fg=self.ui["muted"])
         self.render_stage()
 
+    def clear_console(self):
+        self.log_entries.clear()
+        if hasattr(self, "log_count_var"):
+            self.log_count_var.set("0 events")
+        if hasattr(self, "log_text"):
+            self.log_text.configure(state="normal")
+            self.log_text.delete("1.0", "end")
+            self.log_text.configure(state="disabled")
+
     def push_log(self, tag, who, msg):
         ts = time.strftime("%H:%M:%S")
         self.log_entries.append((ts, tag, who, msg))
-        self.log_entries = self.log_entries[-200:]
+        self.log_entries = self.log_entries[-300:]
+        if hasattr(self, "log_count_var"):
+            self.log_count_var.set(f"{len(self.log_entries)} events")
         if not hasattr(self, "log_text"):
             return
         self.log_text.configure(state="normal")
         self.log_text.insert("end", ts + "  ", "time")
-        self.log_text.insert("end", f"{who:<8}  ", tag)
+        self.log_text.insert("end", f"[{who:<8}]  ", tag)
         self.log_text.insert("end", msg + "\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
@@ -1241,6 +812,8 @@ class FleetDashboard(tk.Tk):
             ("Operational", "ONLINE / ALIVE" if robot.alive else "FAILED / OFFLINE"),
             ("Communication", "MESH LINKED" if robot.comms and robot.alive else "LINK LOST" if robot.alive else "OFFLINE"),
             ("Task ID", robot.task_id),
+            ("Task Priority", getattr(robot, "task_priority", TaskPriority.NORMAL).name),
+            ("Priority Score", f"{getattr(robot, 'priority_score', 0.0):.1f}"),
             ("Goal", f"{robot.goal[0]}  ({robot.goal[1]}, {robot.goal[2]})"),
             ("Current position", f"({robot.c:.2f}, {robot.r:.2f})"),
             ("Grid cell", f"({round(robot.c)}, {round(robot.r)})"),
@@ -1252,6 +825,7 @@ class FleetDashboard(tk.Tk):
             ("Steps taken", f"{robot.steps_taken}"),
             ("Blocked ticks", f"{robot.blocked_ticks}"),
             ("Conflict ticks", f"{robot.conflict_ticks}"),
+            ("Waiting ticks", f"{getattr(robot, 'waiting_ticks', 0)}"),
             ("Temporary block", str(robot.temp_blocked) if robot.temp_blocked else "None"),
             ("Idle until", f"{robot.idle_until:.2f}"),
             ("Failed obstacle", "YES" if robot_id in self.model.failed_obstacles else "NO"),
