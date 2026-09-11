@@ -46,7 +46,7 @@ class FleetDashboard(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("AMR Fleet Control Room — Decentralized Coordination Demo")
+        self.title("PiTuPi Control Room — Decentralized Coordination Demo")
         self.configure(bg="#0A0F16")
         self.geometry("1440x900")
         self.minsize(1180, 760)
@@ -108,7 +108,7 @@ class FleetDashboard(tk.Tk):
 
         brand = tk.Frame(header, bg=self.ui["surface"])
         brand.pack(side="left", padx=22, pady=13)
-        tk.Label(brand, text="AMR FLEET", bg=self.ui["surface"], fg=self.ui["cyan"],
+        tk.Label(brand, text="PiTuPi", bg=self.ui["surface"], fg=self.ui["cyan"],
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         tk.Label(brand, text="Decentralized Coordination Control Room", bg=self.ui["surface"],
                  fg=self.ui["text"], font=("Segoe UI", 17, "bold")).pack(anchor="w")
