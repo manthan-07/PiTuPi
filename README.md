@@ -56,54 +56,54 @@ The system is designed to be fast, lightweight, and simulation-compatible for fu
 ## 5. System Architecture
 
 ```text
-                         ┌──────────────────────────────────────────────┐
-                         │            Decentralized Fleet Layer          │
-                         │                                              │
-                         │  AMR A  ◄──►  AMR B  ◄──►  AMR C  ◄──►  AMR D │
-                         │      │          │          │          │       │
-                         │      └──────────┴──────────┴──────────┴───────┘
-                         │            Peer-to-Peer Mesh / Gossip          │
-                         └──────────────────────────────────────────────┘
-                                                  │
-                                                  │
+                      ┌──────────────────────────────────────────────┐
+                      │           Decentralized Fleet Layer          │
+                      │                                              │
+                      │ AMR A  ◄──►  AMR B  ◄──►  AMR C  ◄──►  AMR D │
+                      │  │             │            │            │   │  
+                      │  └─────────────┴────────────┴────────────┘   │
+                      │           Peer-to-Peer Mesh / Gossip         │
+                      └──────────────────────────────────────────────┘
+                                              │
+                                              │
                       ┌───────────────────────┴────────────────────────┐
                       │                                                │
                       ▼                                                ▼
-      ┌──────────────────────────────┐        ┌──────────────────────────────┐
-      │   MAPF Planner & Pathing     │        │    Conflict Resolver          │
-      │   - Space-Time A*             │        │    - Priority scoring         │
-      │   - Reservation table         │        │    - Deadlock avoidance       │
-      │   - Congestion-aware routing  │        │    - Collision prevention     │
-      └──────────────────────────────┘        └──────────────────────────────┘
+      ┌──────────────────────────────┐               ┌──────────────────────────────┐
+      │   MAPF Planner & Pathing     │               │    Conflict Resolver         │
+      │   - Space-Time A*            │               │    - Priority scoring        │
+      │   - Reservation table        │               │    - Deadlock avoidance      │
+      │   - Congestion-aware routing │               │    - Collision prevention    │
+      └──────────────────────────────┘               └──────────────────────────────┘
                       │                                                │
                       │                                                │
                       └──────────────────────┬─────────────────────────┘
                                              │
                                              ▼
-                        ┌────────────────────────────────┐
-                        │ Fleet Simulation & Control    │
-                        │ - Robot states               │
-                        │ - Task assignment            │
-                        │ - Dynamic replanning         │
-                        │ - Failure handling           │
-                        │ - Metrics & logs             │
-                        └────────────────────────────────┘
+                             ┌───────────────────────────────┐
+                             │ Fleet Simulation & Control    │
+                             │ - Robot states                │
+                             │ - Task assignment             │
+                             │ - Dynamic replanning          │
+                             │ - Failure handling            │
+                             │ - Metrics & logs              │
+                             └───────────────────────────────┘
                                              │
                                              │
                                              ▼
-                        ┌────────────────────────────────┐
-                        │   Task Allocation Layer       │
-                        │   - Auction-based dispatch    │
-                        │   - Battery-aware bidding     │
-                        │   - Reassignment on failure   │
-                        └────────────────────────────────┘
+                            ┌────────────────────────────────┐
+                            │   Task Allocation Layer        │
+                            │   - Auction-based dispatch     │
+                            │   - Battery-aware bidding      │
+                            │   - Reassignment on failure    │
+                            └────────────────────────────────┘
                                              │
                                              ▼
-                        ┌────────────────────────────────┐
-                        │   Monitoring & Visualization  │
-                        │   Dashboard | Alerts | Logs    │
-                        │   (Independent of control)     │
-                        └────────────────────────────────┘
+                            ┌────────────────────────────────┐
+                            │   Monitoring & Visualization   │
+                            │   Dashboard | Alerts | Logs    │
+                            │   (Independent of control)     │
+                            └────────────────────────────────┘
 ```
 
 The coordination layer is independent from the visualization layer, which prevents the dashboard from becoming a central point of failure.
