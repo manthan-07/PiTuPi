@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiTuPi Control Room — Decentralized Coordination Demo</title>
+<meta name="description" content="Edge-AI AMR Fleet Coordination Demo — Decentralized P2P Mesh, Space-Time MAPF, Contract Net Auctions">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========== DESIGN TOKENS ========== */
+:root {
+  --bg: #0A0F16;
+  --surface: #101722;
+  --surface2: #151E2A;
+  --surface3: #1A2533;
+  --border: #253244;
+  --text: #EAF1F8;
+  --muted: #8291A5;
+  --cyan: #42C8E8;
+  --green: #4ED089;
+  --amber: #F2B84B;
+  --red: #F1686A;
+  --violet: #A98BF5;
+  --canvas-bg: #0D141D;
+  --console-bg: #0B1119;
+  --font-ui: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  min-height: 100%; overflow-x: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font-ui); font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== APP GRID ========== */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-width: 1000px;
+}
+
+/* ========== HEADER ========== */
+#header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+#header .brand-sub { font-size: 9px; font-weight: 700; color: var(--cyan); letter-spacing: 1.2px; text-transform: uppercase; }
+#header h1 { font-size: 17px; font-weight: 700; margin-top: 2px; }
+#header .net-status { display: flex; align-items: center; gap: 7px; }
+#header .net-dot { font-size: 14px; font-weight: 700; transition: color 0.3s; }
+#header .net-label { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; transition: color 0.3s; }
+
+/* ========== KPI STRIP ========== */
+#kpi-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  padding: 14px 16px 10px;
+}
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  transition: border-color 0.25s, transform 0.15s;
+}
+.kpi-card:hover { border-color: #3a4d65; transform: translateY(-1px); }
+.kpi-value { font-family: var(--font-mono); font-size: 22px; font-weight: 700; }
+.kpi-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ========== MAIN CONTENT ========== */
+#main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 10px;
+  padding: 0 16px 10px;
+  flex: 1 1 auto;
+  min-height: 520px;
+}
+
+/* Stage card (map) */
+#stage-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  min-height: 480px;
+}
+#stage-toolbar {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 12px 14px 8px;
+  flex-shrink: 0;
+}
+#stage-toolbar .stage-title { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+#stage-toolbar .stage-sub { font-size: 8px; color: var(--muted); margin-top: 2px; }
+#stage-toolbar .controls { display: flex; gap: 6px; align-items: center; }
+
+.pill-group {
+  display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+}
+.pill-btn {
+  background: var(--surface2); color: var(--muted); border: none;
+  font-family: var(--font-ui); font-size: 8px; font-weight: 700;
+  padding: 5px 12px; cursor: pointer; transition: all 0.15s;
+}
+.pill-btn.active { background: var(--cyan); color: var(--bg); }
+.pill-btn:hover:not(.active) { background: var(--surface3); color: var(--text); }
+
+.speed-ctrl {
+  display: flex; align-items: center; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+}
+.speed-btn {
+  background: var(--surface2); color: var(--muted); border: none;
+  font-family: var(--font-ui); font-size: 13px; font-weight: 700;
+  padding: 3px 10px; cursor: pointer; transition: all 0.15s;
+}
+.speed-btn:hover { background: var(--surface3); color: var(--text); }
+.speed-val {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  color: var(--cyan); width: 40px; text-align: center;
+  background: var(--surface2); padding: 3px 0;
+}
+
+#warehouse-canvas {
+  flex: 1; min-height: 0; display: block;
+  background: var(--canvas-bg);
+  margin: 0 10px;
+  border-radius: 4px;
+}
+
+#legend {
+  display: flex; align-items: center; gap: 4px;
+  padding: 8px 13px 11px; flex-shrink: 0;
+  font-size: 8px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;
+}
+.legend-dot { font-size: 10px; margin-left: 14px; }
+.legend-txt { margin-left: 3px; font-weight: 400; }
+
+/* ========== RIGHT SIDEBAR ========== */
+#sidebar {
+  display: flex; flex-direction: column; gap: 10px;
+  overflow-y: auto; overflow-x: hidden;
+  max-height: 620px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+#sidebar::-webkit-scrollbar { width: 7px; }
+#sidebar::-webkit-scrollbar-track { background: transparent; }
+#sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.side-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.side-card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 13px 6px;
+}
+.side-card-title { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+.side-card-badge { font-size: 8px; font-weight: 700; }
+
+/* Robot health cards */
+.robot-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin: 0 10px 6px;
+  padding: 9px 10px 8px;
+}
+.robot-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.robot-id { font-family: var(--font-mono); font-size: 14px; font-weight: 700; }
+.robot-state {
+  font-size: 7px; font-weight: 700; padding: 3px 7px;
+  border-radius: 3px; cursor: pointer; transition: opacity 0.15s;
+  background: rgba(255,255,255,0.04);
+}
+.robot-state:hover { opacity: 0.8; }
+.robot-info { font-family: var(--font-mono); font-size: 8px; color: var(--text); margin-bottom: 2px; }
+.robot-link { font-size: 7px; color: var(--muted); margin-bottom: 6px; }
+.bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.bar-label { font-size: 7px; font-weight: 700; color: var(--muted); width: 55px; letter-spacing: 0.5px; }
+.bar-track { flex: 1; height: 6px; background: #091018; border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease, background-color 0.3s; }
+.bar-value { font-family: var(--font-mono); font-size: 7px; color: var(--muted); width: 28px; text-align: right; }
+
+/* Scenario controls */
+.action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 10px 10px; }
+.action-grid .full-width { grid-column: 1 / -1; }
+.action-btn {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--amber); font-family: var(--font-ui); font-size: 9px; font-weight: 700;
+  padding: 10px; cursor: pointer; transition: all 0.15s; text-align: center;
+}
+.action-btn:hover { background: var(--surface3); border-color: #3a4d65; transform: translateY(-1px); }
+.action-btn:active { transform: translateY(0); }
+.action-sub { font-size: 8px; color: var(--muted); padding: 0 13px 8px; }
+
+/* ========== EVENT CONSOLE ========== */
+#console-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 0 16px 14px;
+  flex-shrink: 0;
+}
+#console-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 13px 6px;
+}
+#console-header .left { display: flex; align-items: center; gap: 8px; }
+#console-header .title { font-size: 9px; font-weight: 700; color: var(--cyan); letter-spacing: 0.5px; }
+#console-header .count {
+  font-size: 7px; font-weight: 700; color: var(--muted);
+  background: var(--surface2); padding: 2px 6px; border-radius: 3px;
+}
+#console-header .right { display: flex; align-items: center; gap: 12px; }
+#console-header .hint { font-size: 8px; color: var(--muted); }
+.clear-btn {
+  background: var(--surface2); border: none; color: var(--muted);
+  font-family: var(--font-ui); font-size: 8px; font-weight: 500;
+  padding: 3px 8px; border-radius: 3px; cursor: pointer; transition: all 0.15s;
+}
+.clear-btn:hover { background: var(--surface3); color: var(--text); }
+
+#console-log {
+  background: var(--console-bg);
+  margin: 0 9px 9px; border-radius: 4px;
+  height: 140px; overflow-y: auto; overflow-x: hidden;
+  padding: 8px 10px;
+  font-family: var(--font-mono); font-size: 9px;
+  line-height: 1.65;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+#console-log::-webkit-scrollbar { width: 7px; }
+#console-log::-webkit-scrollbar-track { background: transparent; }
+#console-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.log-time { color: #66758A; }
+.log-tag-comm { color: #52D1C4; }
+.log-tag-conflict { color: var(--amber); }
+.log-tag-reroute { color: var(--violet); }
+.log-tag-fail { color: var(--red); }
+.log-tag-task { color: var(--green); }
+.log-tag-mapf { color: var(--cyan); }
+
+/* ========== ROBOT DETAIL MODAL ========== */
+#robot-modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(5,8,12,0.7);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  justify-content: center; align-items: center;
+}
+#robot-modal-overlay.open { display: flex; }
+#robot-modal {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  width: 430px; max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: modalIn 0.2s ease;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
+#robot-modal .modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 18px; background: var(--surface);
+  border-radius: 10px 10px 0 0;
+}
+#robot-modal .modal-header h2 { font-size: 16px; font-weight: 700; }
+#robot-modal .modal-header .status { font-size: 9px; font-weight: 700; }
+#robot-modal .modal-body { padding: 12px 16px 16px; }
+.detail-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; margin-bottom: 3px;
+  background: var(--surface2); border-radius: 4px;
+}
+.detail-label { font-size: 8px; font-weight: 700; color: var(--muted); }
+.detail-value { font-family: var(--font-mono); font-size: 8px; color: var(--text); }
+.modal-close {
+  background: var(--surface2); border: none; color: var(--muted);
+  font-size: 18px; cursor: pointer; width: 30px; height: 30px;
+  border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.modal-close:hover { background: var(--surface3); color: var(--text); }
+.modal-hint { font-size: 8px; color: var(--muted); margin-top: 12px; }
+.network-grid { display:grid; grid-template-columns:1fr auto 1fr auto; gap:7px 10px; padding:0 13px 12px; font-size:10px; color:var(--muted); align-items:center; }
+.network-grid strong { font-family:var(--font-mono); color:var(--text); font-size:10px; }
+.benchmark-result { padding:0 13px 12px; font-family:var(--font-mono); font-size:9px; line-height:1.7; color:var(--muted); }
+.benchmark-result strong { color:var(--text); }
+/* Video readability: high-contrast type for 1920x1080 recording. */
+#header h1 { font-size:26px; font-weight:800; letter-spacing:-.2px; }
+#header .brand-sub { font-size:12px; font-weight:800; }
+#header .net-label { font-size:12px; font-weight:800; }
+#stage-toolbar .stage-title,.side-card-title { font-size:16px; font-weight:800; color:#203b52; }
+#stage-toolbar .stage-sub,.action-sub { font-size:12px; line-height:1.4; }
+.pill-btn { font-size:13px; font-weight:700; }
+.speed-btn { font-size:15px; }
+.speed-val { font-size:12px; }
+.kpi-value { font-size:30px; font-weight:800; color:#173b58 !important; }
+.kpi-label { font-size:14px; font-weight:600; color:#536a7a; }
+#legend { font-size:11px; }
+.legend-dot { font-size:12px; }
+.legend-txt { font-size:11px; }
+.side-card-badge { font-size:12px; font-weight:700; }
+.robot-id { font-size:17px; font-weight:800; }
+.robot-state { font-size:13px; font-weight:800; }
+.robot-info,.robot-link { font-size:12px; line-height:1.4; }
+.bar-label,.bar-value { font-size:11px; font-weight:700; }
+.action-btn { font-size:13px; font-weight:700; }
+#console-header .title { font-size:14px; font-weight:800; }
+#console-header .count,#console-header .hint,.clear-btn { font-size:12px; }
+#console-log { font-size:13px; line-height:1.8; }
+.network-grid,.benchmark-result { font-size:12px; line-height:1.7; }
+
+/* Light industrial HMI theme */
+:root {
+  --bg:#eef2f5; --surface:#ffffff; --surface2:#f5f7f9; --surface3:#e9eef2;
+  --border:#d4dde5; --text:#183047; --muted:#607386; --cyan:#1769aa;
+  --green:#2d7b55; --amber:#a66b00; --red:#bd3f45; --violet:#456da5;
+  --canvas-bg:#e7edf1; --console-bg:#f3f6f8;
+}
+body { font-size:14px; }
+#header { background:#fff; box-shadow:0 1px 3px rgba(25,48,69,.06); }
+#header .brand-sub,#console-header .title { color:var(--cyan); }
+#main { grid-template-columns:minmax(0,1fr) 340px; }
+.kpi-card,.side-card,#stage-card,#console-card { box-shadow:0 1px 3px rgba(25,48,69,.05); }
+.kpi-card:hover { border-color:#9cb6ca; }
+.pill-btn,.speed-btn,.speed-val,.action-btn,.robot-card,.detail-row,.clear-btn { background:var(--surface2); }
+.pill-btn.active { background:var(--cyan); color:#fff; }
+.robot-state { background:#e7eef3; }
+.bar-track { background:#dfe7ed; }
+#console-log { background:#f5f8fa; }
+#warehouse-canvas { border:1px solid #cbd7e0; }
+@media (max-width:1200px) {
+  #app { min-width:0; }
+  #main { grid-template-columns:minmax(0,1fr) 300px; }
+}
+@media (max-width:900px) {
+  #main { grid-template-columns:1fr; }
+  #sidebar { max-height:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+  #stage-card { min-height:520px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ===== HEADER ===== -->
+  <div id="header">
+    <div>
+      <div class="brand-sub">PiTuPi</div>
+      <h1>Decentralized Coordination Control Room</h1>
+    </div>
+    <div class="net-status">
+      <span id="net-dot" class="net-dot" style="color:var(--green)">●</span>
+      <span id="net-label" class="net-label" style="color:var(--green)">P2P MESH HEALTHY</span>
+    </div>
+  </div>
+
+  <!-- ===== KPI STRIP ===== -->
+  <div id="kpi-strip">
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi-collisions" style="color:var(--green)">0</div>
+      <div class="kpi-label">Safety events</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi-completed" style="color:var(--cyan)">0</div>
+      <div class="kpi-label">Tasks completed</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi-reroutes" style="color:var(--violet)">0</div>
+      <div class="kpi-label">Dynamic reroutes</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi-speedup" style="color:var(--green)">—</div>
+      <div class="kpi-label">Less waiting vs. stop/wait</div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div id="main">
+    <!-- Stage card -->
+    <div id="stage-card">
+      <div id="stage-toolbar">
+        <div>
+          <div class="stage-title">LIVE WAREHOUSE MAP</div>
+          <div class="stage-sub">11 × 8 grid • Space-Time MAPF • Decentralized P2P Conflict Resolution</div>
+        </div>
+        <div class="controls">
+          <div class="pill-group">
+            <button class="pill-btn active" id="btn-2d" onclick="setView('2d')">2D</button>
+            <button class="pill-btn" id="btn-3d" onclick="setView('3d')">3D</button>
+          </div>
+          <div class="speed-ctrl">
+            <button class="speed-btn" onclick="changeSpeed(-1)">−</button>
+            <div class="speed-val" id="speed-display">1×</div>
+            <button class="speed-btn" onclick="changeSpeed(1)">+</button>
+          </div>
+        </div>
+      </div>
+      <canvas id="warehouse-canvas"></canvas>
+      <div id="legend">
+        STATUS
+        <span class="legend-dot" style="color:var(--cyan)">●</span><span class="legend-txt">Moving</span>
+        <span class="legend-dot" style="color:var(--amber)">●</span><span class="legend-txt">Yielding</span>
+        <span class="legend-dot" style="color:var(--violet)">●</span><span class="legend-txt">Rerouting</span>
+        <span class="legend-dot" style="color:var(--red)">●</span><span class="legend-txt">Blocked / offline</span>
+      </div>
+    </div>
+
+    <!-- Right sidebar -->
+    <div id="sidebar">
+      <!-- Robot Health -->
+      <div class="side-card" id="fleet-card">
+        <div class="side-card-header">
+          <div class="side-card-title">ROBOT HEALTH</div>
+          <div class="side-card-badge" id="robot-count" style="color:var(--green)">4 online</div>
+        </div>
+        <div id="robots-container"></div>
+      </div>
+      <!-- Scenario Controls -->
+      <div class="side-card">
+        <div class="side-card-header">
+          <div class="side-card-title">SCENARIO CONTROLS</div>
+        </div>
+        <div class="action-sub">Inject failures live during the demo</div>
+        <div class="action-grid">
+          <button class="action-btn" style="color:var(--amber)" onclick="toggleObstacleMode()">＋ Place obstacle</button>
+          <button class="action-btn" style="color:var(--amber)" onclick="injectObstacle()">▰ Obstacle</button>
+          <button class="action-btn" style="color:var(--red)" onclick="failRobot()">× Robot fail</button>
+          <button class="action-btn" style="color:var(--violet)" onclick="dropComms()">⌁ Drop comms</button>
+          <button class="action-btn full-width" style="color:var(--cyan)" onclick="resetSim()">↻ Reset</button>
+        </div>
+      </div>
+      <div class="side-card" id="network-card">
+        <div class="side-card-header"><div class="side-card-title">P2P NETWORK</div><div class="side-card-badge" id="network-badge">LIVE</div></div>
+        <div class="network-grid">
+          <span>Sent</span><strong id="net-sent">0</strong><span>Delivered</span><strong id="net-delivered">0</strong>
+          <span>Dropped</span><strong id="net-dropped">0</strong><span>Latency</span><strong id="net-latency">0 ms</strong>
+          <span>Retries</span><strong id="net-retries">0</strong><span>Timeouts</span><strong id="net-timeouts">0</strong>
+        </div>
+      </div>
+      <div class="side-card" id="benchmark-card">
+        <div class="side-card-header"><div class="side-card-title">BENCHMARK COMPARISON</div><div class="side-card-badge" id="benchmark-badge">MEASURED</div></div>
+        <div class="action-grid"><button class="action-btn full-width" onclick="runBenchmark()">Run measured comparison</button></div>
+        <div id="benchmark-result" class="benchmark-result">NO BENCHMARK RUN YET</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== EVENT CONSOLE ===== -->
+  <div id="console-card">
+    <div id="console-header">
+      <div class="left">
+        <span class="title">DECENTRALIZED EVENT CONSOLE</span>
+        <span class="count" id="log-count">0 events</span>
+      </div>
+      <div class="right">
+        <span class="hint">live peer decisions • Space-Time MAPF • no central controller</span>
+        <button class="clear-btn" onclick="clearConsole()">Clear Console</button>
+      </div>
+    </div>
+    <div id="console-log"></div>
+  </div>
+</div>
+
+<!-- Robot Detail Modal -->
+<div id="robot-modal-overlay" onclick="closeModal(event)">
+  <div id="robot-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="modal-title">ROBOT A</h2>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONFIG — backend/config.py
+// ═══════════════════════════════════════════════════════════════
+const COLS = 11, ROWS = 8, CELL_SIZE = 78;
+const TICK_MS = 33, DEFAULT_SIM_SPEED = 1.0, SLOW_TICKS = 40;
+const ROBOT_BASE_SPEED = 0.008;
+const MAX_TIME_HORIZON = 64, WAIT_STEP_COST = 1.2;
+const CONGESTION_DECAY = 0.96, CONGESTION_WEIGHT = 0.8;
+const CORNER_RISK_PENALTY = 0.3, COMMS_DEADZONE_PENALTY = 2.0;
+
+const ROBOT_COLORS = { A: '#1769aa', B: '#4c7898', C: '#52769a', D: '#3f7f68', E: '#9a5960' };
+const ROBOT_RING_COLORS = { A: '#1769aa', B: '#f2c230', C: '#8b5cf6', D: '#3f7f68', E: '#bd3f45' };
+
+const SHELVES = [
+  [2,1,1,2], [2,5,1,2],
+  [5,1,1,2], [5,5,1,2],
+  [8,1,1,2], [8,5,1,2],
+];
+
+const STATIONS = [
+  ['P1',0,0], ['P2',10,0], ['P3',0,7], ['P4',10,7], ['DOCK',5,7],
+];
+
+const UI = {
+  bg:'#0A0F16', surface:'#101722', surface2:'#151E2A', surface3:'#1A2533',
+  border:'#253244', text:'#EAF1F8', muted:'#8291A5',
+  cyan:'#1769aa', green:'#2d7b55', amber:'#a66b00', red:'#bd3f45', violet:'#456da5',
+};
+
+// ═══════════════════════════════════════════════════════════════
+// ROBOT — backend/types.py
+// ═══════════════════════════════════════════════════════════════
+const TaskPriority = { NORMAL:1, EXPRESS:2, RETURN_TO_DOCK:3 };
+const ConflictType = { NONE:0, VERTEX:1, SWAP_EDGE:2, CORRIDOR_HEAD_ON:3, STATIONARY_OBSTACLE:4 };
+const ResolutionAction = { PROCEED:'proceed', YIELD_SLOW:'yield_slow', WAIT_STEP:'wait_step',
+  SPACE_TIME_DETOUR:'space_time_detour', SIDESTEP:'sidestep', STOP_BLOCKED:'stop_blocked' };
+
+class Robot {
+  constructor(id, c, r, battery, goal, path) {
+    this.id = id; this.c = c; this.r = r; this.battery = battery;
+    this.goal = goal; this.path = path;
+    this.pathIdx = 0; this.progress = 0; this.state = 'moving';
+    this.comms = true; this.alive = true;
+    this.taskId = 't000'; this.speed = ROBOT_BASE_SPEED;
+    this.blockedTicks = 0; this.stepsTaken = 0;
+    this.conflictTicks = 0; this.waitingTicks = 0;
+    this.tempBlocked = null; this.idleUntil = 0;
+    this.priorityScore = 0; this.taskPriority = TaskPriority.NORMAL;
+    this.failureReason = null; this.failedAtMs = null; this.intentionallyFailed = false;
+  }
+  get currentCell() { return [Math.round(this.c), Math.round(this.r)]; }
+  get nextCell() {
+    if (!this.path || this.pathIdx >= this.path.length - 1) return null;
+    return this.path[this.pathIdx + 1];
+  }
+  get pathRemaining() {
+    if (!this.path) return 999;
+    return Math.max(0, this.path.length - this.pathIdx);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COST-AWARE GRID — backend/mapf.py (CostAwareGrid)
+// ═══════════════════════════════════════════════════════════════
+class CostAwareGrid {
+  constructor() { this.congestionMap = new Map(); }
+  inBounds(c, r) { return c >= 0 && c < COLS && r >= 0 && r < ROWS; }
+  isStaticObstacle(c, r) {
+    return SHELVES.some(([sc,sr,w,h]) => c >= sc && c < sc+w && r >= sr && r < sr+h);
+  }
+  recordCellUsage(cell, weight=1) {
+    const k = cell[0]+','+cell[1];
+    this.congestionMap.set(k, (this.congestionMap.get(k)||0) + weight);
+  }
+  decayCongestion() {
+    for (const [k,v] of this.congestionMap) {
+      const nv = v * CONGESTION_DECAY;
+      if (nv < 0.01) this.congestionMap.delete(k); else this.congestionMap.set(k, nv);
+    }
+  }
+  getCellCost(cell, dynObs) {
+    const [c,r] = cell;
+    if (!this.inBounds(c,r) || this.isStaticObstacle(c,r) || dynObs.has(c+','+r)) return Infinity;
+    let cost = 1.0;
+    cost += (this.congestionMap.get(c+','+r) || 0) * CONGESTION_WEIGHT;
+    for (const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      if (this.isStaticObstacle(c+dc, r+dr)) cost += CORNER_RISK_PENALTY;
+    }
+    return cost;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RESERVATION TABLE — backend/mapf.py (ReservationTable)
+// ═══════════════════════════════════════════════════════════════
+class ReservationTable {
+  constructor() { this.vertex = new Map(); this.edge = new Map(); }
+  clear() { this.vertex.clear(); this.edge.clear(); }
+  clearRobot(rid) {
+    for (const [k,v] of this.vertex) { if (v === rid) this.vertex.delete(k); }
+    for (const [k,v] of this.edge) { if (v === rid) this.edge.delete(k); }
+  }
+  reservePath(rid, path, startTime=0) {
+    this.clearRobot(rid);
+    if (!path || !path.length) return;
+    for (let i = 0; i < path.length; i++) {
+      const t = startTime + i;
+      this.vertex.set(path[i][0]+','+path[i][1]+','+t, rid);
+      if (i > 0) {
+        const prev = path[i-1];
+        this.edge.set(prev[0]+','+prev[1]+'->'+path[i][0]+','+path[i][1]+','+(t-1), rid);
+      }
+    }
+    const last = path[path.length-1];
+    for (let e = 1; e <= 7; e++) {
+      this.vertex.set(last[0]+','+last[1]+','+(startTime+path.length-1+e), rid);
+    }
+  }
+  isVertexReserved(c, r, t, ignoreId=null) {
+    const occ = this.vertex.get(c+','+r+','+t);
+    return occ != null && occ !== ignoreId;
+  }
+  isEdgeReserved(from, to, t, ignoreId=null) {
+    // Swap conflict
+    const counter = this.edge.get(to[0]+','+to[1]+'->'+from[0]+','+from[1]+','+t);
+    if (counter != null && counter !== ignoreId) return true;
+    const same = this.edge.get(from[0]+','+from[1]+'->'+to[0]+','+to[1]+','+t);
+    if (same != null && same !== ignoreId) return true;
+    return false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SPACE-TIME A* — backend/mapf.py (SpaceTimeAStar)
+// ═══════════════════════════════════════════════════════════════
+class MinHeap {
+  constructor() { this.data = []; }
+  push(item) { this.data.push(item); this._bubbleUp(this.data.length-1); }
+  pop() {
+    const top = this.data[0]; const last = this.data.pop();
+    if (this.data.length) { this.data[0] = last; this._sinkDown(0); }
+    return top;
+  }
+  get length() { return this.data.length; }
+  _bubbleUp(i) {
+    while (i > 0) {
+      const p = (i-1)>>1;
+      if (this.data[p][0] <= this.data[i][0]) break;
+      [this.data[p], this.data[i]] = [this.data[i], this.data[p]]; i = p;
+    }
+  }
+  _sinkDown(i) {
+    const n = this.data.length;
+    while (true) {
+      let s = i, l = 2*i+1, r = 2*i+2;
+      if (l < n && this.data[l][0] < this.data[s][0]) s = l;
+      if (r < n && this.data[r][0] < this.data[s][0]) s = r;
+      if (s === i) break;
+      [this.data[s], this.data[i]] = [this.data[i], this.data[s]]; i = s;
+    }
+  }
+}
+
+class SpaceTimeAStar {
+  constructor(grid, reservations) { this.grid = grid; this.reservations = reservations; }
+
+  plan(robotId, start, goal, dynObs, startTime=0) {
+    const dynSet = new Set();
+    if (dynObs) for (const p of dynObs) { if (!(p[0]===start[0]&&p[1]===start[1])) dynSet.add(p[0]+','+p[1]); }
+    if (!this.grid.inBounds(...goal) || this.grid.isStaticObstacle(...goal) || dynSet.has(goal[0]+','+goal[1]))
+      return null;
+
+    const h = (c,r) => Math.abs(c-goal[0]) + Math.abs(r-goal[1]);
+    const startKey = start[0]+','+start[1]+','+startTime;
+    const heap = new MinHeap();
+    heap.push([h(...start), 0, start[0], start[1], startTime]);
+    const gScores = new Map(); gScores.set(startKey, 0);
+    const cameFrom = new Map();
+    const closed = new Set();
+
+    while (heap.length) {
+      const [f, g, cc, cr, ct] = heap.pop();
+      const curKey = cc+','+cr+','+ct;
+      if (closed.has(curKey)) continue;
+      closed.add(curKey);
+
+      if (cc === goal[0] && cr === goal[1]) {
+        if (!this.reservations.isVertexReserved(cc, cr, ct, robotId)) {
+          return this._reconstruct(cameFrom, curKey, startKey, start);
+        }
+      }
+      if (ct - startTime >= MAX_TIME_HORIZON) continue;
+
+      const nt = ct + 1;
+      const actions = [[cc+1,cr],[cc-1,cr],[cc,cr+1],[cc,cr-1],[cc,cr]];
+      for (const [nc,nr] of actions) {
+        const isWait = nc===cc && nr===cr;
+        if (!this.grid.inBounds(nc,nr) || this.grid.isStaticObstacle(nc,nr) || dynSet.has(nc+','+nr)) continue;
+        if (this.reservations.isVertexReserved(nc,nr,nt,robotId)) continue;
+        if (!isWait && this.reservations.isEdgeReserved([cc,cr],[nc,nr],ct,robotId)) continue;
+
+        const stepCost = isWait ? WAIT_STEP_COST : this.grid.getCellCost([nc,nr], dynSet);
+        const nKey = nc+','+nr+','+nt;
+        const tentG = g + stepCost;
+        if (tentG < (gScores.get(nKey) ?? Infinity)) {
+          gScores.set(nKey, tentG);
+          cameFrom.set(nKey, curKey);
+          heap.push([tentG + h(nc,nr), tentG, nc, nr, nt]);
+        }
+      }
+    }
+    return this._fallback(start, goal, dynSet);
+  }
+
+  _reconstruct(cameFrom, goalKey, startKey, start) {
+    const path = [];
+    let cur = goalKey;
+    while (cur !== startKey) {
+      const parts = cur.split(',').map(Number);
+      path.push([parts[0], parts[1]]);
+      cur = cameFrom.get(cur);
+      if (!cur) break;
+    }
+    path.push([start[0], start[1]]);
+    path.reverse();
+    return path;
+  }
+
+  _fallback(start, goal, dynSet) {
+    const h = (c,r) => Math.abs(c-goal[0]) + Math.abs(r-goal[1]);
+    const heap = new MinHeap();
+    heap.push([h(...start), 0, start[0], start[1]]);
+    const gScore = new Map(); gScore.set(start[0]+','+start[1], 0);
+    const came = new Map();
+    const closed = new Set();
+
+    while (heap.length) {
+      const [_, g, cc, cr] = heap.pop();
+      const ck = cc+','+cr;
+      if (closed.has(ck)) continue;
+      closed.add(ck);
+      if (cc===goal[0] && cr===goal[1]) break;
+
+      for (const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nc=cc+dc, nr=cr+dr, nk=nc+','+nr;
+        if (!this.grid.inBounds(nc,nr) || this.grid.isStaticObstacle(nc,nr) || dynSet.has(nk)) continue;
+        const ng = g + this.grid.getCellCost([nc,nr], dynSet);
+        if (ng < (gScore.get(nk) ?? Infinity)) {
+          gScore.set(nk, ng); came.set(nk, ck);
+          heap.push([ng+h(nc,nr), ng, nc, nr]);
+        }
+      }
+    }
+    const gk = goal[0]+','+goal[1];
+    if (!gScore.has(gk) && !(start[0]===goal[0]&&start[1]===goal[1])) return null;
+    const path = [goal];
+    let cur = gk;
+    while (!(cur === start[0]+','+start[1])) {
+      cur = came.get(cur);
+      if (!cur) return null;
+      const p = cur.split(',').map(Number);
+      path.push(p);
+    }
+    path.reverse();
+    return path;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRIORITY ENGINE — backend/conflict_resolver.py
+// ═══════════════════════════════════════════════════════════════
+class PriorityEngine {
+  calculate(robot) {
+    if (!robot.alive || robot.state === 'offline') { robot.priorityScore = -1000; return -1000; }
+    let score = 0;
+    if (robot.taskPriority === TaskPriority.EXPRESS) score += 60;
+    else if (robot.taskPriority === TaskPriority.RETURN_TO_DOCK) score += 40;
+    else score += 15;
+    if (robot.battery < 20) score += 45;
+    else if (robot.battery < 35) score += 20;
+    score += Math.max(0, (40 - robot.pathRemaining) * 0.8);
+    score += robot.conflictTicks * 1.5;
+    score += robot.waitingTicks * 1.0;
+    if (robot.state === 'moving') score += 5;
+    score += (90 - robot.id.charCodeAt(0)) * 0.01; // Z=90 tie-breaker
+    robot.priorityScore = score;
+    return score;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONFLICT RESOLVER — backend/conflict_resolver.py
+// ═══════════════════════════════════════════════════════════════
+class ConflictResolver {
+  constructor(pe) { this.pe = pe; }
+
+  check(robot, others, blockedCells) {
+    if (!robot.alive || robot.state === 'offline' || robot.state === 'idle') return null;
+    const cur = robot.currentCell;
+    const nc = robot.nextCell;
+    // Temp blockage
+    if (robot.tempBlocked && nc && nc[0]===robot.tempBlocked[0] && nc[1]===robot.tempBlocked[1]) {
+      return { robotA:robot.id, robotB:null, type:ConflictType.STATIONARY_OBSTACLE,
+        cell:nc, winner:null, action:ResolutionAction.SPACE_TIME_DETOUR,
+        explanation:`Dynamic obstacle encountered ahead at (${nc[0]},${nc[1]}).` };
+    }
+    if (!nc) return null;
+
+    for (const other of others) {
+      if (other.id === robot.id || !other.alive) continue;
+      const oc = other.currentCell;
+      const on = other.nextCell;
+      // Stationary/parked
+      if (nc[0]===oc[0]&&nc[1]===oc[1] && (!on || other.state==='idle')) {
+        return { robotA:robot.id, robotB:other.id, type:ConflictType.STATIONARY_OBSTACLE,
+          cell:nc, winner:other.id, action:ResolutionAction.SPACE_TIME_DETOUR,
+          explanation:`Cell (${nc[0]},${nc[1]}) held by parked Robot ${other.id}.` };
+      }
+      // Swap/edge
+      if (on && on[0]===cur[0]&&on[1]===cur[1] && nc[0]===oc[0]&&nc[1]===oc[1]) {
+        const mp = this.pe.calculate(robot), op = this.pe.calculate(other);
+        const winner = mp >= op ? robot.id : other.id;
+        const act = winner===robot.id ? ResolutionAction.PROCEED : ResolutionAction.SPACE_TIME_DETOUR;
+        return { robotA:robot.id, robotB:other.id, type:ConflictType.SWAP_EDGE,
+          cell:nc, winner, action:act,
+          explanation:`Head-on swap detected on edge (${cur[0]},${cur[1]})↔(${nc[0]},${nc[1]}) with Robot ${other.id}.` };
+      }
+      // Vertex
+      const isVertex = on && on[0]===nc[0] && on[1]===nc[1];
+      const isOccupied = nc[0]===oc[0]&&nc[1]===oc[1] && on;
+      if (isVertex || isOccupied) {
+        const mp = this.pe.calculate(robot), op = this.pe.calculate(other);
+        const iWin = mp >= op;
+        let act;
+        if (iWin) act = ResolutionAction.PROCEED;
+        else act = robot.conflictTicks <= SLOW_TICKS ? ResolutionAction.YIELD_SLOW : ResolutionAction.SPACE_TIME_DETOUR;
+        return { robotA:robot.id, robotB:other.id, type:ConflictType.VERTEX,
+          cell:nc, winner:iWin?robot.id:other.id, action:act,
+          explanation:`Junction contention at (${nc[0]},${nc[1]}) with Robot ${other.id} (P:${mp.toFixed(1)} vs P:${op.toFixed(1)}).` };
+      }
+    }
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// P2P NETWORK — backend/p2p_network.py
+// ═══════════════════════════════════════════════════════════════
+class P2PNetwork {
+  constructor(logFn, latencyMs=0, packetLoss=0, heartbeatIntervalMs=1000, heartbeatTimeoutMs=3000, maxRetries=2) {
+    this.logFn=logFn; this.peers={}; this.known=new Map(); this.clock=0; this.latencyMs=latencyMs;
+    this.packetLoss=packetLoss>1?packetLoss/100:packetLoss; this.heartbeatIntervalMs=heartbeatIntervalMs;
+    this.heartbeatTimeoutMs=heartbeatTimeoutMs; this.maxRetries=maxRetries; this.seq={}; this.lastSeen={};
+    this.queue=[]; this.pending=new Map(); this.latest=new Map(); this.partitions=new Set(); this.received=[];
+    this.metrics={messages_sent:0,messages_delivered:0,messages_dropped:0,retry_count:0,heartbeat_timeouts:0,latency_total_ms:0};
+  }
+  register(rid) { this.peers[rid] = true; }
+  setComms(rid, on) { this.peers[rid] = on; }
+  isActive(rid) { return !!this.peers[rid]; }
+  setPartition(a,b,on=true) { const k=[a,b].sort().join('|'); on?this.partitions.add(k):this.partitions.delete(k); }
+  send(sender, receiver, type, payload={}, critical=false) {
+    if (!this.isActive(sender)) return null; const n=(this.seq[sender]||0)+1; this.seq[sender]=n;
+    const m={sender_id:sender,receiver_id:receiver,message_type:type,sequence_number:n,timestamp:this.clock,payload,attempt:0};
+    this.queue.push({at:this.clock+this.latencyMs,m:m}); this.metrics.messages_sent++;
+    if (critical || ['RESOURCE_REQUEST','RESOURCE_GRANT','RESOURCE_DENY','RESOURCE_RELEASE','TASK_REASSIGN'].includes(type)) this.pending.set(sender+'|'+n,m);
+    return m;
+  }
+  advance(ms, robots=[]) {
+    this.clock+=ms; const out=[], keep=[];
+    for (const item of this.queue) { const m=item.m; if(item.at>this.clock){keep.push(item);continue;}
+      const rs=m.receiver_id?[m.receiver_id]:Object.keys(this.peers);
+      for(const r of rs){const pk=[m.sender_id,r].sort().join('|'); if(r===m.sender_id||!this.isActive(r)||this.partitions.has(pk)||Math.random()<this.packetLoss){this.metrics.messages_dropped++;continue;}
+        const k=m.sender_id+'|'+r+'|'+m.message_type, old=this.latest.get(k); if(['STATE_UPDATE','INTENT_UPDATE'].includes(m.message_type)&&old!==undefined&&m.sequence_number<=old)continue;
+        if(['STATE_UPDATE','INTENT_UPDATE'].includes(m.message_type))this.latest.set(k,m.sequence_number); if(m.message_type==='HEARTBEAT')this.lastSeen[m.sender_id]=this.clock;
+        out.push(m); this.received.push(m); this.metrics.messages_delivered++; this.metrics.latency_total_ms+=this.clock-m.timestamp;
+      }
+    }
+    this.queue=keep; for(const r of robots)if(r.alive&&(this.clock-(this.lastSeen[r.id]||0)>=this.heartbeatIntervalMs)){this.send(r.id,null,'HEARTBEAT',{status:r.state});this.lastSeen[r.id]=this.clock;}
+    for(const [k,m] of this.pending){if(this.clock-m.timestamp>=this.heartbeatTimeoutMs/2&&m.attempt<this.maxRetries){m.attempt++;m.timestamp=this.clock;this.metrics.retry_count++;this.queue.push({at:this.clock+this.latencyMs,m});}else if(m.attempt>=this.maxRetries)this.pending.delete(k);}
+    this.metrics.heartbeat_timeouts=Object.keys(this.peers).filter(r=>this.isActive(r)&&this.clock-(this.lastSeen[r]??0)>this.heartbeatTimeoutMs).length; return out;
+  }
+  broadcastObstacle(senderId, obstacle, robots) {
+    if (!this.isActive(senderId)) return [];
+    this.send(senderId, null, 'OBSTACLE_ALERT', {obstacle});
+    const k = obstacle[0]+','+obstacle[1];
+    if (!this.known.has(k)) this.known.set(k, new Set());
+    this.known.get(k).add(senderId);
+    const notified = [];
+    for (const peer of robots) {
+      if (peer.id===senderId || !peer.alive) continue;
+      if (this.isActive(peer.id)) {
+        const s = this.known.get(k);
+        if (!s.has(peer.id)) {
+          s.add(peer.id); notified.push(peer.id);
+          this.logFn('comm', peer.id, `Received P2P obstacle notice at (${obstacle[0]},${obstacle[1]}) from ${senderId} — updating local map.`);
+        }
+      }
+    }
+    return notified;
+  }
+  broadcastPath(senderId, path, robots) { this.send(senderId, null, 'INTENT_UPDATE', {intended_path:path}); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TASK ALLOCATOR — backend/task_allocator.py
+// ═══════════════════════════════════════════════════════════════
+class TaskAllocator {
+  constructor(logFn) { this.logFn = logFn; }
+  calcBid(robot, goal) {
+    if (!robot.alive || !robot.comms || robot.state==='offline') return null;
+    if (robot.battery < 15) return null;
+    const dist = Math.abs(Math.round(robot.c)-goal[1]) + Math.abs(Math.round(robot.r)-goal[2]);
+    const wl = robot.pathRemaining * 1.5;
+    const bp = Math.max(0, (100-robot.battery)*0.3);
+    const idle = robot.state==='idle' ? -10 : 0;
+    return { id:robot.id, cost:dist+wl+bp+idle, dist, battery:robot.battery, isIdle:robot.state==='idle' };
+  }
+  auction(taskId, goal, candidates, initiator) {
+    const bids = [];
+    for (const r of candidates) {
+      if (r.id===initiator) continue;
+      const b = this.calcBid(r, goal);
+      if (b) bids.push(b);
+    }
+    if (!bids.length) { this.logFn('fail', initiator, `Auction for task ${taskId} failed: No active peers eligible to bid.`); return null; }
+    bids.sort((a,b) => a.cost-b.cost);
+    const w = bids[0];
+    this.logFn('task', w.id, `Won decentralized auction for task ${taskId} -> ${goal[0]} (Bid Cost: ${w.cost.toFixed(1)}, dist: ${w.dist}, batt: ${w.battery.toFixed(0)}%).`);
+    return w.id;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FLEET MODEL — backend/fleet_model.py
+// ═══════════════════════════════════════════════════════════════
+class FleetModel {
+  constructor(logFn, metricsFn, strategy='DECENTRALIZED', benchmarkMode=false) {
+    this.logFn = logFn; this.metricsFn = metricsFn;
+    this.strategy = strategy; this.benchmarkMode = benchmarkMode; this.comparison = null;
+    this.grid = new CostAwareGrid();
+    this.reservations = new ReservationTable();
+    this.planner = new SpaceTimeAStar(this.grid, this.reservations);
+    this.pe = new PriorityEngine();
+    this.cr = new ConflictResolver(this.pe);
+    this.network = new P2PNetwork(logFn);
+    this.allocator = new TaskAllocator(logFn);
+    this.robots = []; this.benchmarkScenario = null; this.tick = 0; this.simSpeed = DEFAULT_SIM_SPEED;
+    this.failedObstacles = new Set(); this.manualObstacles = new Set();
+    this.metrics = { collisions:0, completed:0, reroute_events:0, baseline_time_estimate:0, actual_time_accum:0, messages_sent:0, messages_delivered:0, messages_dropped:0, packet_loss_rate:0, average_latency_ms:0, retry_count:0, heartbeat_timeouts:0, task_reassignments:0 };
+    this.reset();
+  }
+
+  static inBounds(c,r) { return c>=0&&c<COLS&&r>=0&&r<ROWS; }
+  static blocked(c,r) { return SHELVES.some(([sc,sr,w,h])=>c>=sc&&c<sc+w&&r>=sr&&r<sr+h); }
+
+  allDynObs() {
+    const s = new Set();
+    for (const v of this.failedObstacles) s.add(v);
+    for (const v of this.manualObstacles) s.add(v);
+    return s;
+  }
+  allDynObsPoints() {
+    const pts = [];
+    for (const k of this.failedObstacles) { const p = k.split(',').map(Number); pts.push(p); }
+    for (const k of this.manualObstacles) { const p = k.split(',').map(Number); pts.push(p); }
+    return pts;
+  }
+
+  findPath(start, goal, dynBlocked=[], rid='A') {
+    const dyn = this.allDynObsPoints();
+    for (const d of dynBlocked) dyn.push(d);
+    // Remove start from dyn
+    const filtered = dyn.filter(p => !(p[0]===start[0]&&p[1]===start[1]));
+    return this.planner.plan(rid, start, goal, filtered, this.tick);
+  }
+
+  randStation(exC, exR) {
+    let choices = STATIONS.filter(s => !(s[1]===exC&&s[2]===exR) && !this.failedObstacles.has(s[1]+','+s[2]));
+    if (!choices.length) choices = STATIONS.filter(s => !(s[1]===exC&&s[2]===exR));
+    return choices[Math.floor(Math.random()*choices.length)];
+  }
+
+  makeRobot(rid, c, r, battery) {
+    const goal = this.randStation(c, r);
+    const taskId = 't' + (100 + Math.floor(Math.random()*900));
+    const path = this.findPath([c,r], [goal[1],goal[2]], [], rid);
+    const robot = new Robot(rid, c, r, battery, goal, path);
+    robot.taskId = taskId;
+    robot.speed = ROBOT_BASE_SPEED + Math.random()*0.002;
+    if (path) this.reservations.reservePath(rid, path, this.tick);
+    this.network.register(rid);
+    return robot;
+  }
+
+  reset() {
+    this.metrics = { collisions:0, completed:0, reroute_events:0, baseline_time_estimate:0, actual_time_accum:0, messages_sent:0, messages_delivered:0, messages_dropped:0, packet_loss_rate:0, average_latency_ms:0, retry_count:0, heartbeat_timeouts:0, task_reassignments:0 };
+    this.tick = 0;
+    this.failedObstacles.clear(); this.manualObstacles.clear();
+    this.reservations.clear();
+    this.robots = [
+      this.makeRobot('A', 0, 2, 82),
+      this.makeRobot('B', 4, 0, 64),
+      this.makeRobot('C', 8, 3, 91),
+      this.makeRobot('D', 10, 5, 76),
+    ];
+    // Preserve a clean, deterministic benchmark scenario for independent comparisons.
+    // The live run may already have moved or parked robots when the button is pressed.
+    // Distinct station goals prevent a parked robot at a completed station from
+    // becoming a permanent stop-and-wait obstacle while retaining shared aisles.
+    // Opposing destinations deliberately share the upper/main aisles so the
+    // measured stop-and-wait strategy has real contention to resolve.
+    const benchmarkGoals = { A:'P2', B:'P3', C:'P4', D:'P1' };
+    const benchmarkPlanner = new SpaceTimeAStar(this.grid, new ReservationTable());
+    this.benchmarkScenario = this.robots.map(source => {
+      const data = JSON.parse(JSON.stringify(source));
+      const station = STATIONS.find(s => s[0] === benchmarkGoals[source.id]) || source.goal;
+      data.goal = station;
+      data.taskId = `bench-${source.id}`;
+      data.path = benchmarkPlanner.plan(source.id, [data.c, data.r], [station[1], station[2]], [], 0);
+      data.pathIdx = 0; data.progress = 0; data.state = 'moving';
+      data.waitingTicks = 0; data.stepsTaken = 0; data.conflictTicks = 0;
+      data.alive = true; data.comms = true; data.intentionallyFailed = false;
+      return data;
+    });
+    this.logFn('comm', 'SYSTEM', 'Decentralized P2P mesh initialized. 4 AMR peers online (Robots A, B, C, D).');
+    for (const r of this.robots) {
+      if (r.path) this.logFn('mapf', r.id, `4D Space-Time path reserved (${r.path.length} waypoints) -> heading to ${r.goal[0]}.`);
+    }
+    this.metricsFn(this.metrics);
+  }
+
+  assignNewTask(robot) {
+    if (!robot.alive) return;
+    const cur = robot.currentCell;
+    const goal = this.randStation(cur[0], cur[1]);
+    robot.goal = goal;
+    robot.taskId = 't' + (100 + Math.floor(Math.random()*900));
+    if (robot.battery < 30 || goal[0]==='DOCK') robot.taskPriority = TaskPriority.RETURN_TO_DOCK;
+    else robot.taskPriority = TaskPriority.NORMAL;
+    const db = robot.tempBlocked ? [robot.tempBlocked] : [];
+    const np = this.findPath(cur, [goal[1],goal[2]], db, robot.id);
+    robot.path = np; robot.pathIdx = 0; robot.progress = 0;
+    robot.stepsTaken = 0; robot.conflictTicks = 0; robot.waitingTicks = 0;
+    robot.state = 'moving'; robot.idleUntil = 0;
+    if (np) {
+      this.reservations.reservePath(robot.id, np, this.tick);
+      this.network.broadcastPath(robot.id, np, this.robots);
+    }
+    this.pe.calculate(robot);
+    this.logFn('task', robot.id, `Assigned task ${robot.taskId} -> ${goal[0]} (Priority: ${robot.taskPriority===TaskPriority.RETURN_TO_DOCK?'RETURN_TO_DOCK':robot.taskPriority===TaskPriority.EXPRESS?'EXPRESS':'NORMAL'}, Score: ${robot.priorityScore.toFixed(1)}, Steps: ${np?np.length:0}).`);
+  }
+
+  handleBlockage(robot) {
+    if (robot.state === 'blocked' || !robot.tempBlocked) return;
+    robot.state = 'blocked';
+    this.logFn('fail', robot.id, `Obstacle detected ahead at (${robot.tempBlocked[0]},${robot.tempBlocked[1]}). Marking cell unsafe locally.`);
+    const np = this.findPath(robot.currentCell, [robot.goal[1],robot.goal[2]], [robot.tempBlocked], robot.id);
+    if (np && np.length > 1) {
+      robot.path = np; robot.pathIdx = 0; robot.progress = 0;
+      robot.state = 'moving'; robot.conflictTicks = 0;
+      if (this.strategy === 'DECENTRALIZED') this.reservations.reservePath(robot.id, np, this.tick);
+      this.metrics.reroute_events++;
+      this.logFn('reroute', robot.id, 'Dynamic replan complete. New MAPF trajectory reserved.');
+      this.network.broadcastObstacle(robot.id, robot.tempBlocked, this.robots);
+      for (const o of this.robots) {
+        if (o.id!==robot.id && o.alive && o.path) {
+          if (o.path.some(p=>p[0]===robot.tempBlocked[0]&&p[1]===robot.tempBlocked[1])) {
+            o.tempBlocked = robot.tempBlocked;
+          }
+        }
+      }
+    } else {
+      this.logFn('fail', robot.id, 'No alternate route found around obstacle. Holding position.');
+    }
+    this.metricsFn(this.metrics);
+  }
+
+  step() {
+    this.tick++;
+    this.network.advance(33, this.robots);
+    Object.assign(this.metrics, this.network.metrics);
+    this.metrics.packet_loss_rate=this.metrics.messages_sent?this.metrics.messages_dropped/this.metrics.messages_sent:0;
+    this.metrics.average_latency_ms=this.metrics.messages_delivered?this.metrics.latency_total_ms/this.metrics.messages_delivered:0;
+    for (const robot of [...this.robots]) {
+      if (robot.alive && !robot.intentionallyFailed && this.network.clock-(this.network.lastSeen[robot.id]??0)>this.network.heartbeatTimeoutMs) {
+        this.metrics.heartbeat_timeouts++; this._failRobot(robot, 'heartbeat_timeout', false);
+      }
+    }
+    const now = performance.now() / 1000;
+    if (this.tick % 30 === 0) this.grid.decayCongestion();
+
+    // Idle robots -> new tasks
+    for (const r of this.robots) {
+      if (r.alive && r.state === 'idle' && r.idleUntil && now >= r.idleUntil) {
+        if (!this.benchmarkMode) this.assignNewTask(r);
+      }
+    }
+
+    // Periodic telemetry
+    if (this.tick % 90 === 0) {
+      const active = this.robots.filter(r=>r.alive).map(r=>`R${r.id}:${r.state.slice(0,4)}`);
+      this.logFn('comm', 'P2P MESH', `Telemetry: ${active.length} peers operational [${active.join(' | ')}] | Tasks done: ${this.metrics.completed} | 0 collisions.`);
+    }
+
+    for (const robot of this.robots) {
+      if (!robot.alive || robot.state === 'offline') continue;
+      this.pe.calculate(robot);
+
+      if (robot.state === 'moving') {
+        robot.battery = Math.max(0, robot.battery - 0.012);
+        if (robot.battery < 15 && robot.taskPriority !== TaskPriority.RETURN_TO_DOCK) {
+          robot.taskPriority = TaskPriority.RETURN_TO_DOCK;
+        }
+      }
+
+      // Check completed
+      if (!robot.path || robot.pathIdx >= robot.path.length - 1) {
+        if (robot.state !== 'idle') {
+          robot.state = 'idle';
+          this.metrics.completed++;
+          this.metrics.actual_time_accum += robot.stepsTaken;
+          this.reservations.clearRobot(robot.id);
+          this.logFn('task', robot.id, `Reached ${robot.goal[0]}. Task ${robot.taskId} completed.`);
+          robot.idleUntil = now + 0.9;
+          this.metricsFn(this.metrics);
+        }
+        continue;
+      }
+
+      const nc = robot.nextCell;
+      if (!nc) continue;
+
+      // Temp blocked check
+      if (robot.tempBlocked && nc[0]===robot.tempBlocked[0] && nc[1]===robot.tempBlocked[1]) {
+        this.handleBlockage(robot); continue;
+      }
+
+      // Conflict resolution
+      let conflict;
+      if (this.strategy === 'STOP_AND_WAIT') {
+        const occupiedBy = this.robots.find(r=>r.alive&&r.id!==robot.id&&r.currentCell[0]===nc[0]&&r.currentCell[1]===nc[1]);
+        const contenders = this.robots.filter(r=>r.alive&&r.id!==robot.id&&r.nextCell&&r.nextCell[0]===nc[0]&&r.nextCell[1]===nc[1]);
+        const participants = [robot, ...contenders, ...(occupiedBy ? [occupiedBy] : [])];
+        const winner = participants.sort((a,b)=>a.id.localeCompare(b.id))[0];
+        const isHeadOnSwap = occupiedBy && occupiedBy.nextCell &&
+          occupiedBy.nextCell[0]===robot.currentCell[0] && occupiedBy.nextCell[1]===robot.currentCell[1];
+        // A stop-and-wait controller must break a head-on swap deterministically.
+        // The winning robot may enter the vacated cell; the other robot waits.
+        // For a shared occupied cell, keep waiting until the occupant clears it.
+        conflict = (isHeadOnSwap ? robot.id !== winner.id : occupiedBy || (contenders.length && robot.id !== winner.id))
+          ? {action:ResolutionAction.WAIT_STEP} : null;
+      } else conflict = this.cr.check(robot, this.robots, this.allDynObs());
+      if (conflict) {
+        if (conflict.action === ResolutionAction.WAIT_STEP) {
+          robot.waitingTicks++; robot.state='waiting'; continue;
+        } else if (conflict.action === ResolutionAction.PROCEED) {
+          robot.state = 'moving'; robot.conflictTicks = 0;
+        } else if (conflict.action === ResolutionAction.YIELD_SLOW) {
+          robot.conflictTicks++; robot.waitingTicks++;
+          if (robot.state !== 'slowing') {
+            robot.state = 'slowing';
+            this.logFn('conflict', robot.id, `${conflict.explanation} Yielding right-of-way to ${conflict.winner}; slowing to 15%.`);
+          }
+          robot.progress += robot.speed * this.simSpeed * 0.15;
+          continue;
+        } else if (conflict.action === ResolutionAction.SPACE_TIME_DETOUR || conflict.action === ResolutionAction.SIDESTEP) {
+          robot.state = 'rerouting';
+          this.logFn('reroute', robot.id, `${conflict.explanation} Initiating dynamic MAPF replan.`);
+          const np = this.findPath(robot.currentCell, [robot.goal[1],robot.goal[2]], [conflict.cell], robot.id);
+          if (np && np.length > 1) {
+            robot.path = np; robot.pathIdx = 0; robot.progress = 0;
+            robot.state = 'moving'; robot.conflictTicks = 0; robot.waitingTicks = 0;
+            this.reservations.reservePath(robot.id, np, this.tick);
+            this.metrics.reroute_events++;
+            this.logFn('reroute', robot.id, `Detour computed avoiding (${conflict.cell[0]},${conflict.cell[1]}). Resumed navigation.`);
+            this.metricsFn(this.metrics);
+          } else {
+            this.logFn('fail', robot.id, `No viable detour found around (${conflict.cell[0]},${conflict.cell[1]}). Holding safely.`);
+            robot.state = 'blocked'; robot.conflictTicks = 0;
+          }
+          continue;
+        }
+      } else if (['slowing','rerouting','blocked'].includes(robot.state)) {
+        robot.state = 'moving'; robot.conflictTicks = 0;
+      }
+
+      // Normal motion
+      let effSpeed = robot.speed * this.simSpeed;
+      if (!robot.comms) effSpeed *= 0.65;
+      robot.progress += effSpeed;
+
+      if (robot.progress >= 1.0) {
+        robot.progress = 0;
+        robot.c = nc[0]; robot.r = nc[1];
+        robot.pathIdx++; robot.stepsTaken++;
+        robot.state = 'moving';
+        this.grid.recordCellUsage(nc);
+        if (this.strategy === 'DECENTRALIZED' && robot.path && robot.pathIdx < robot.path.length) {
+          this.reservations.reservePath(robot.id, robot.path.slice(robot.pathIdx), this.tick);
+        }
+        if (robot.stepsTaken % 3 === 0) {
+          this.logFn('mapf', robot.id, `Advancing through cell (${nc[0]},${nc[1]}) -> ${robot.goal[0]} (P:${robot.priorityScore.toFixed(1)}, Batt:${robot.battery.toFixed(0)}%).`);
+        }
+      }
+    }
+
+    // Safety check: collisions
+    const occ = new Map();
+    for (const r of this.robots) {
+      if (!r.alive) continue;
+      const k = r.currentCell[0]+','+r.currentCell[1];
+      if (occ.has(k) && occ.get(k) !== r.id) {
+        this.metrics.collisions++;
+        this.logFn('fail', 'SYSTEM', `Collision alert: Robot ${occ.get(k)} and Robot ${r.id} at (${r.currentCell[0]},${r.currentCell[1]})!`);
+      }
+      occ.set(k, r.id);
+    }
+  }
+
+  runComparison(maxTicks=1800) {
+    const snapshot = JSON.parse(JSON.stringify(this.benchmarkScenario || this.robots));
+    const execute = (strategy) => {
+      const run = new FleetModel(this.logFn, this.metricsFn, strategy, true);
+      // JSON cloning preserves the scenario values but strips Robot getters;
+      // rehydrate instances so currentCell/nextCell remain available to the run.
+      run.robots = snapshot.map(data => Object.assign(
+        new Robot(data.id, data.c, data.r, data.battery, data.goal, data.path), data
+      ));
+      run.tick = 0;
+      run.reservations.clear();
+      if (strategy === 'DECENTRALIZED') {
+        for (const robot of run.robots) if (robot.path) run.reservations.reservePath(robot.id, robot.path, 0);
+      }
+      run.metrics = {collisions:0, completed:0, reroute_events:0, waiting_time:0, simulation_duration:0};
+      const targetTasks = run.robots.length;
+      for (let i=0;i<maxTicks;i++) { run.step(); if (run.metrics.completed >= targetTasks) break; }
+      const duration = run.tick;
+      return {completion_time:duration, waiting_time:run.robots.reduce((s,r)=>s+(r.waitingTicks||0),0), completed:run.metrics.completed, throughput:duration?run.metrics.completed/duration:0, collisions:run.metrics.collisions, reroutes:run.metrics.reroute_events, task_reassignments:run.metrics.task_reassignments||0, simulation_duration:duration, complete:run.metrics.completed >= targetTasks};
+    };
+    const baseline=execute('STOP_AND_WAIT'), decentralized=execute('DECENTRALIZED');
+    const compare=(b,p)=>({baseline:b,decentralized:p,absolute_difference:p-b,percentage_difference:b?((p-b)/b)*100:0});
+    this.comparison={baseline,decentralized,comparison:{completion_time:compare(baseline.completion_time,decentralized.completion_time),waiting_time:compare(baseline.waiting_time,decentralized.waiting_time),throughput:compare(baseline.throughput,decentralized.throughput),collisions:compare(baseline.collisions,decentralized.collisions)}};
+    return this.comparison;
+  }
+
+  placeManualObstacle(cell) {
+    const [c,r] = cell;
+    if (!FleetModel.inBounds(c,r) || FleetModel.blocked(c,r)) return false;
+    const k = c+','+r;
+    if (this.failedObstacles.has(k) || this.manualObstacles.has(k)) return false;
+    if (this.robots.some(rb=>rb.alive&&rb.currentCell[0]===c&&rb.currentCell[1]===r)) return false;
+    this.manualObstacles.add(k);
+    this.logFn('fail', 'SYSTEM', `Live obstacle placed at (${c},${r}). Fleet triggered P2P map update.`);
+    this._replanAround(cell);
+    this.metricsFn(this.metrics);
+    return true;
+  }
+
+  removeManualObstacle(cell) {
+    const k = cell[0]+','+cell[1];
+    if (!this.manualObstacles.has(k)) return false;
+    this.manualObstacles.delete(k);
+    this.logFn('comm', 'SYSTEM', `Live obstacle removed from (${cell[0]},${cell[1]}). Sector cleared.`);
+    for (const robot of this.robots) {
+      if (!robot.alive) continue;
+      const np = this.findPath(robot.currentCell, [robot.goal[1],robot.goal[2]], robot.tempBlocked?[robot.tempBlocked]:[], robot.id);
+      if (np) {
+        robot.path = np; robot.pathIdx = 0; robot.progress = 0;
+        if (robot.state==='blocked') robot.state = 'moving';
+        this.reservations.reservePath(robot.id, np, this.tick);
+      }
+    }
+    this.metricsFn(this.metrics);
+    return true;
+  }
+
+  _replanAround(obstacle) {
+    for (const robot of this.robots) {
+      if (!robot.alive) continue;
+      const pathHit = robot.path && robot.path.some(p=>p[0]===obstacle[0]&&p[1]===obstacle[1]);
+      const tbHit = robot.tempBlocked && robot.tempBlocked[0]===obstacle[0] && robot.tempBlocked[1]===obstacle[1];
+      if (!pathHit && !tbHit) continue;
+      const db = (robot.tempBlocked && !(robot.tempBlocked[0]===obstacle[0]&&robot.tempBlocked[1]===obstacle[1])) ? [robot.tempBlocked] : [];
+      const np = this.findPath(robot.currentCell, [robot.goal[1],robot.goal[2]], db, robot.id);
+      if (np) {
+        robot.path = np; robot.pathIdx = 0; robot.progress = 0;
+        robot.state = 'rerouting'; robot.conflictTicks = 0;
+        this.reservations.reservePath(robot.id, np, this.tick);
+        this.metrics.reroute_events++;
+        this.logFn('reroute', robot.id, `Rerouted around new obstacle at (${obstacle[0]},${obstacle[1]}).`);
+      } else {
+        robot.state = 'blocked';
+        this.logFn('fail', robot.id, `No detour around (${obstacle[0]},${obstacle[1]}); waiting for clearance.`);
+      }
+    }
+  }
+
+  injectObstacle() {
+    const active = this.robots.filter(r=>r.alive && r.state!=='idle' && r.state!=='offline');
+    if (!active.length) return;
+    const robot = active[Math.floor(Math.random()*active.length)];
+    let nc = robot.nextCell || robot.currentCell;
+    if (robot.path && robot.pathIdx + 2 < robot.path.length) nc = robot.path[robot.pathIdx+2];
+    robot.tempBlocked = nc;
+    this.logFn('fail', 'SYSTEM', `Dynamic obstacle injected near Robot ${robot.id}'s path at (${nc[0]},${nc[1]}).`);
+  }
+
+  failRobot() {
+    const alive = this.robots.filter(r=>r.alive);
+    if (!alive.length) return;
+    const failed = alive[Math.floor(Math.random()*alive.length)];
+    this._failRobot(failed, 'manual', true);
+  }
+
+  _failRobot(failed, reason='manual', intentional=true) {
+    if (!failed.alive) return;
+    const fc = failed.currentCell;
+    const fk = fc[0]+','+fc[1];
+    failed.alive = false; failed.state = 'offline';
+    failed.failureReason = reason; failed.failedAtMs = this.network.clock; failed.intentionallyFailed = intentional;
+    this.reservations.clearRobot(failed.id);
+    this.failedObstacles.add(fk);
+    this.logFn('fail', failed.id, `${reason==='heartbeat_timeout'?'Heartbeat timeout':'Manual failure'}! Robot ${failed.id} offline at (${fc[0]},${fc[1]}) — converted to physical obstacle.`);
+
+    for (const robot of this.robots) {
+      if (!robot.alive) continue;
+      if (robot.path && robot.path.some(p=>p[0]===fc[0]&&p[1]===fc[1])) {
+        if (robot.goal && robot.goal[1]===fc[0] && robot.goal[2]===fc[1]) {
+          robot.goal = this.randStation(robot.currentCell[0], robot.currentCell[1]);
+          robot.taskId = 't' + (100+Math.floor(Math.random()*900));
+        }
+        const np = this.findPath(robot.currentCell, [robot.goal[1],robot.goal[2]], robot.tempBlocked?[robot.tempBlocked]:[], robot.id);
+        if (np) {
+          robot.path = np; robot.pathIdx = 0; robot.progress = 0;
+          robot.state = 'moving'; robot.conflictTicks = 0;
+          this.reservations.reservePath(robot.id, np, this.tick);
+          this.metrics.reroute_events++;
+          this.logFn('reroute', robot.id, `Rerouted around failed Robot ${failed.id} at (${fc[0]},${fc[1]}).`);
+        }
+      }
+    }
+
+    // Auction
+    const winnerId = this.allocator.auction(failed.taskId, failed.goal, this.robots, failed.id);
+    if (winnerId) {
+      const winner = this.robots.find(r=>r.id===winnerId);
+      if (winner) {
+        winner.goal = failed.goal; winner.taskId = failed.taskId;
+        winner.taskPriority = TaskPriority.EXPRESS;
+        this.metrics.task_reassignments++;
+        const np = this.findPath(winner.currentCell, [winner.goal[1],winner.goal[2]], winner.tempBlocked?[winner.tempBlocked]:[], winner.id);
+        if (np) {
+          winner.path = np; winner.pathIdx = 0; winner.progress = 0;
+          winner.state = 'moving';
+          this.reservations.reservePath(winner.id, np, this.tick);
+        }
+      }
+    }
+    this.metricsFn(this.metrics);
+  }
+
+  setRobotAComms(enabled) {
+    const robot = this.robots.find(r=>r.id==='A');
+    if (!robot || !robot.alive) return;
+    robot.comms = enabled;
+    this.network.setComms('A', enabled);
+    if (enabled) {
+      this.logFn('comm', 'A', 'Mesh link restored. Triggered P2P map & reservation resync.');
+      if (robot.path) this.reservations.reservePath('A', robot.path.slice(robot.pathIdx), this.tick);
+    } else {
+      this.logFn('comm', 'A', 'Wi-Fi dead-zone entered! Switching to conservative local sensing mode (speed -35%).');
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD FRONTEND
+// ═══════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('warehouse-canvas');
+const ctx = canvas.getContext('2d');
+const logEl = document.getElementById('console-log');
+
+let viewMode = '2d';
+let azimuth = 0.65, elevation = 0.72, zoom = 1.0;
+let dragLast = null;
+let obstacleMode = false;
+let commsRestoreTimer = null;
+let logEntries = [];
+const speedLevels = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
+
+// Log system
+function pushLog(tag, who, msg) {
+  const d = new Date();
+  const ts = d.toTimeString().slice(0,8);
+  logEntries.push({ts, tag, who, msg});
+  if (logEntries.length > 300) logEntries = logEntries.slice(-300);
+  document.getElementById('log-count').textContent = logEntries.length + ' events';
+
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="log-time">${ts}</span>  <span class="log-tag-${tag}">[${who.padEnd(8)}]</span>  ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function renderMetrics(m) {
+  document.getElementById('kpi-collisions').textContent = m.collisions;
+  document.getElementById('kpi-completed').textContent = m.completed;
+  document.getElementById('kpi-reroutes').textContent = m.reroute_events;
+  const benchmark = window.dashboardModel && window.dashboardModel.comparison;
+  const waitingImprovement = benchmark && benchmark.baseline && benchmark.decentralized &&
+    benchmark.baseline.complete && benchmark.decentralized.complete && benchmark.baseline.waiting_time > 0
+    ? ((benchmark.baseline.waiting_time - benchmark.decentralized.waiting_time) / benchmark.baseline.waiting_time) * 100
+    : null;
+  document.getElementById('kpi-speedup').textContent = waitingImprovement === null ? '—' : waitingImprovement.toFixed(1) + '%';
+  const n = (window.dashboardModel && window.dashboardModel.network) ? window.dashboardModel.network.metrics : {};
+  const set = (id, value) => { const el=document.getElementById(id); if (el) el.textContent=value; };
+  set('net-sent', n.messages_sent || 0); set('net-delivered', n.messages_delivered || 0);
+  set('net-dropped', n.messages_dropped || 0); set('net-latency', `${(m.average_latency_ms || 0).toFixed(1)} ms`);
+  set('net-retries', n.retry_count || 0); set('net-timeouts', n.heartbeat_timeouts || 0);
+}
+
+const model = new FleetModel(pushLog, renderMetrics);
+window.dashboardModel = model;
+
+function runBenchmark() {
+  const output = document.getElementById('benchmark-result');
+  try {
+    const result = model.runComparison(1800);
+    const c = result.comparison.completion_time;
+    const comparable = result.baseline.complete && result.decentralized.complete;
+    const deltaLabel = comparable ? `${c.percentage_difference.toFixed(1)}%` : 'N/A';
+    const completionLabel = run => run.complete ? run.completion_time : `INCOMPLETE @ ${run.simulation_duration}`;
+    output.innerHTML =
+      `<strong>Completion</strong>  SW ${completionLabel(result.baseline)}  /  DC ${completionLabel(result.decentralized)}<br>` +
+      `<strong>Waiting</strong>  SW ${result.baseline.waiting_time}  /  DC ${result.decentralized.waiting_time}<br>` +
+      `<strong>Tasks / throughput</strong>  SW ${result.baseline.completed} / ${result.baseline.throughput.toFixed(4)}  ·  DC ${result.decentralized.completed} / ${result.decentralized.throughput.toFixed(4)}<br>` +
+      `<strong>Collisions / reroutes</strong>  SW ${result.baseline.collisions} / ${result.baseline.reroutes}  ·  DC ${result.decentralized.collisions} / ${result.decentralized.reroutes}<br>` +
+      `<strong>Reassignments / duration</strong>  SW ${result.baseline.task_reassignments} / ${result.baseline.simulation_duration}  ·  DC ${result.decentralized.task_reassignments} / ${result.decentralized.simulation_duration}<br>` +
+      `<strong>Measured Δ</strong> ${deltaLabel}`;
+    const waitingImprovement = comparable && result.baseline.waiting_time > 0
+      ? ((result.baseline.waiting_time - result.decentralized.waiting_time) / result.baseline.waiting_time) * 100
+      : null;
+    document.getElementById('kpi-speedup').textContent = waitingImprovement === null ? 'N/A' : waitingImprovement.toFixed(1) + '%';
+  } catch (error) {
+    output.textContent = `Benchmark error: ${error.message}`;
+    pushLog('fail', 'BENCHMARK', error.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CANVAS RENDERING
+// ═══════════════════════════════════════════════════════════════
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  // Subtract toolbar and legend heights
+  const toolbar = document.getElementById('stage-toolbar');
+  const legend = document.getElementById('legend');
+  const th = toolbar ? toolbar.offsetHeight : 0;
+  const lh = legend ? legend.offsetHeight : 0;
+  const availH = rect.height - th - lh - 20; // 20 for margin padding
+  canvas.width = Math.max(rect.width - 20, 400);
+  canvas.height = Math.max(availH, 300);
+}
+
+function cellToPx(c, r) {
+  const w = canvas.width, h = canvas.height;
+  const cell = Math.min(CELL_SIZE, (w - 90) / COLS, (h - 75) / ROWS);
+  const ox = (w - COLS * cell) / 2 + cell / 2;
+  const oy = (h - ROWS * cell) / 2 + cell / 2;
+  return [ox + c * cell, oy + r * cell, cell];
+}
+
+function interpGridPos(robot) {
+  if (!robot.path || robot.pathIdx >= robot.path.length) return [robot.c, robot.r];
+  const cur = robot.path[robot.pathIdx];
+  const nxt = robot.pathIdx + 1 < robot.path.length ? robot.path[robot.pathIdx + 1] : cur;
+  return [cur[0] + (nxt[0]-cur[0]) * robot.progress, cur[1] + (nxt[1]-cur[1]) * robot.progress];
+}
+
+function mapLabel(text, x, y, color='#5d7485', size=8, align='center') {
+  ctx.font = `600 ${size}px Inter, Segoe UI, sans-serif`;
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+
+function drawArrow(x, y, direction='right', color='#9aadb9') {
+  const s = 6;
+  ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (direction === 'right') { ctx.moveTo(x-s,y); ctx.lineTo(x+s,y); ctx.lineTo(x+s-4,y-3); ctx.moveTo(x+s,y); ctx.lineTo(x+s-4,y+3); }
+  else { ctx.moveTo(x,y-s); ctx.lineTo(x,y+s); ctx.lineTo(x-3,y+s-4); ctx.moveTo(x,y+s); ctx.lineTo(x+3,y+s-4); }
+  ctx.stroke(); ctx.restore();
+}
+
+function drawWarehouseAnnotations(x0, y0, cell) {
+  // These annotations are visual only; all coordinates remain the existing 11x8 grid.
+  ctx.save();
+  ctx.strokeStyle = '#b5c3cc'; ctx.lineWidth = 1; ctx.setLineDash([5,4]);
+  const crossY = y0 + 3.5*cell;
+  ctx.beginPath(); ctx.moveTo(x0+5, crossY); ctx.lineTo(x0+COLS*cell-5, crossY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Perimeter and operational zones.
+  ctx.strokeStyle = '#8fa4b1'; ctx.lineWidth = 1.5; ctx.strokeRect(x0+4, y0+4, COLS*cell-8, ROWS*cell-8);
+  ctx.fillStyle = 'rgba(109,155,188,.07)'; ctx.fillRect(x0+4, y0+4, 1.35*cell, 2.15*cell);
+  ctx.fillStyle = 'rgba(109,155,188,.05)'; ctx.fillRect(x0+COLS*cell-1.35*cell-4, y0+4, 1.35*cell, 2.15*cell);
+  ctx.fillStyle = 'rgba(92,145,112,.08)'; ctx.fillRect(x0+4.1*cell, y0+6.15*cell, 1.8*cell, 1.65*cell);
+  mapLabel('RECEIVING', x0+1.45*cell, y0+.38*cell, '#405b6d', 10);
+  mapLabel('PICKUP / STAGING', x0+9.25*cell, y0+.38*cell, '#405b6d', 10);
+  mapLabel('MAIN AISLE', x0+.25*cell, crossY-9, '#536b79', 9, 'left');
+  mapLabel('CHARGE BAY', x0+6.35*cell, y0+7.43*cell, '#3f7054', 9);
+
+  // Small staging pallets and loading-bay guides add operational depth without blocking cells.
+  ctx.strokeStyle = '#9eb4c1'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.strokeRect(x0+.25*cell, y0+.72*cell, 1.35*cell, .72*cell);
+  ctx.strokeRect(x0+9.4*cell, y0+.72*cell, 1.35*cell, .72*cell); ctx.setLineDash([]);
+  for (const [pc,pr] of [[.55,1.0],[1.0,1.0],[9.7,1.0],[10.15,1.0]]) {
+    ctx.fillStyle = '#c3d2da'; ctx.fillRect(x0+pc*cell, y0+pr*cell, 8, 8);
+    ctx.strokeStyle = '#8da5b3'; ctx.strokeRect(x0+pc*cell, y0+pr*cell, 8, 8);
+  }
+
+  // Storage aisle center markings and directional arrows.
+  ctx.strokeStyle = '#c0ccd3'; ctx.lineWidth = 1; ctx.setLineDash([3,5]);
+  for (const c of [1,3,4,6,7,9,10]) {
+    const xx = x0 + (c+.5)*cell;
+    ctx.beginPath(); ctx.moveTo(xx, y0+.28*cell); ctx.lineTo(xx, y0+2.72*cell); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xx, y0+5.28*cell); ctx.lineTo(xx, y0+7.05*cell); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for (const c of [1,4,7,10]) { drawArrow(x0+(c+.5)*cell, y0+3.5*cell, 'right'); drawArrow(x0+(c+.5)*cell, y0+4.5*cell, 'left'); }
+
+  // Shared resources / intersections: subtle until a real robot conflict is present.
+  const intersections = [[2.5,3.5,'I-01'],[5.5,3.5,'I-02'],[8.5,3.5,'I-03'],[4.5,4.5,'I-04'],[7.5,4.5,'I-05'],[5,6.9,'I-06']];
+  for (const [c,r,label] of intersections) {
+    const ix=x0+c*cell, iy=y0+r*cell;
+    ctx.strokeStyle='#aabac4'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.strokeRect(ix-cell*.22, iy-cell*.16, cell*.44, cell*.32); ctx.setLineDash([]);
+    mapLabel(label, ix, iy-cell*.25, '#3f596a', 9);
+  }
+
+  // Dock/charging bay visual detail around the existing DOCK coordinate.
+  const dx=x0+5*cell, dy=y0+7*cell;
+  ctx.strokeStyle='#79a187'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.strokeRect(dx-cell*.72, dy-cell*.62, cell*1.45, cell*1.12); ctx.setLineDash([]);
+  for (const off of [-.38,0,.38]) {
+    ctx.strokeStyle='#79a187'; ctx.strokeRect(dx+off*cell-5, dy-cell*.52, 10, 8);
+  }
+  mapLabel('BAY', dx, dy-cell*.42, '#3f7054', 9);
+  ctx.restore();
+}
+
+function draw2D() {
+  const [_x0, _y0, cell] = cellToPx(0, 0);
+  const x0 = _x0 - cell/2, y0 = _y0 - cell/2;
+
+  // Floor shadow & border
+  ctx.fillStyle = '#0A1017'; ctx.strokeStyle = '#1B2837'; ctx.lineWidth = 1;
+  ctx.fillRect(x0-9, y0-9, COLS*cell+18, ROWS*cell+18);
+  ctx.strokeRect(x0-9, y0-9, COLS*cell+18, ROWS*cell+18);
+  ctx.fillStyle = '#0D151F'; ctx.strokeStyle = '#2A3B4F';
+  ctx.fillRect(x0, y0, COLS*cell, ROWS*cell);
+  ctx.strokeRect(x0, y0, COLS*cell, ROWS*cell);
+
+  // Operational floor zones: the logical grid remains unchanged.
+  ctx.fillStyle = '#edf2f5'; ctx.fillRect(x0, y0, COLS*cell, ROWS*cell);
+  ctx.fillStyle = '#e3ebf0'; ctx.fillRect(x0, y0 + 3*cell, COLS*cell, 2*cell);
+  ctx.fillStyle = '#f6f8fa'; ctx.fillRect(x0 + 4*cell, y0, 3*cell, ROWS*cell);
+  drawWarehouseAnnotations(x0, y0, cell);
+
+  // Grid lines
+  ctx.strokeStyle = '#dce5eb'; ctx.lineWidth = 1;
+  for (let c = 0; c <= COLS; c++) {
+    const x = x0 + c*cell;
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0+ROWS*cell); ctx.stroke();
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    const y = y0 + r*cell;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0+COLS*cell, y); ctx.stroke();
+  }
+
+  // Coordinate labels
+  ctx.font = 'bold 9px JetBrains Mono, Consolas, monospace'; ctx.fillStyle = '#40586a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let c = 0; c < COLS; c++) ctx.fillText(c, x0+c*cell+cell/2, y0-13);
+  ctx.textAlign = 'right';
+  for (let r = 0; r < ROWS; r++) ctx.fillText(r, x0-10, y0+r*cell+cell/2);
+
+  // Shelves: one visible bank per existing logical shelf (six total).
+  let rackNo = 1;
+  for (const [sc,sr,sw,sh] of SHELVES) {
+    const [sx,sy] = [cellToPx(sc,sr)[0], cellToPx(sc,sr)[1]];
+    const left = sx-cell/2+7, top = sy-cell/2+7;
+    const right = left+sw*cell-14, bottom = top+sh*cell-14;
+    // Shadow
+    ctx.fillStyle = '#080C11'; ctx.fillRect(left+4, top+5, right-left, bottom-top);
+    // Body
+    ctx.fillStyle = '#cbd5dc'; ctx.fillRect(left, top, right-left, bottom-top);
+    ctx.strokeStyle = '#8799a8'; ctx.lineWidth = 1; ctx.strokeRect(left, top, right-left, bottom-top);
+    // Repeated storage bays and shelf levels.
+    ctx.strokeStyle = '#aebdc8';
+    for (let i = 1; i < 4; i++) {
+      const yy = top + (bottom-top)*i/4;
+      ctx.beginPath(); ctx.moveTo(left+5, yy); ctx.lineTo(right-5, yy); ctx.stroke();
+    }
+    for (let bx=left+cell*.22; bx<right-3; bx+=cell*.28) {
+      ctx.fillStyle = '#a1b5c1'; ctx.fillRect(bx, top+5, 4, 4); ctx.fillRect(bx, top+(bottom-top)*.52, 4, 4);
+    }
+    mapLabel(`R${String(rackNo).padStart(2,'0')}`, (left+right)/2, top-5, '#334f63', 9);
+    rackNo++;
+  }
+
+  // Stations
+  for (const [name, sc, sr] of STATIONS) {
+    const [sx, sy] = cellToPx(sc, sr);
+    ctx.beginPath(); ctx.arc(sx, sy, 18, 0, Math.PI*2);
+    ctx.fillStyle = name === 'DOCK' ? '#e4f0e9' : '#e5eff7'; ctx.fill();
+    ctx.strokeStyle = name === 'DOCK' ? '#6e9b7d' : '#6d9bbc'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.font = 'bold 11px JetBrains Mono, Consolas'; ctx.fillStyle = '#203f57';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(name, sx, sy);
+  }
+
+  // Temporary obstacles (from temp_blocked)
+  const shownObs = new Set();
+  for (const robot of model.robots) {
+    if (robot.tempBlocked) {
+      const k = robot.tempBlocked[0]+','+robot.tempBlocked[1];
+      if (!shownObs.has(k)) {
+        shownObs.add(k);
+        const [ox, oy] = cellToPx(robot.tempBlocked[0], robot.tempBlocked[1]);
+        ctx.strokeStyle = UI.red; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+        ctx.fillStyle = '#33181F';
+        ctx.fillRect(ox-cell/2+7, oy-cell/2+7, cell-14, cell-14);
+        ctx.strokeRect(ox-cell/2+7, oy-cell/2+7, cell-14, cell-14);
+        ctx.setLineDash([]);
+        ctx.font = 'bold 7px Inter'; ctx.fillStyle = UI.red; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('OBSTACLE', ox, oy-6);
+        ctx.font = 'bold 15px Inter'; ctx.fillText('×', ox, oy+8);
+      }
+    }
+  }
+
+  // Manual obstacles
+  for (const k of model.manualObstacles) {
+    const [mc, mr] = k.split(',').map(Number);
+    const [ox, oy] = cellToPx(mc, mr);
+    ctx.fillStyle = '#352316'; ctx.strokeStyle = UI.amber; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.fillRect(ox-cell/2+7, oy-cell/2+7, cell-14, cell-14);
+    ctx.strokeRect(ox-cell/2+7, oy-cell/2+7, cell-14, cell-14);
+    ctx.font = 'bold 7px Inter'; ctx.fillStyle = UI.amber; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('LIVE', ox, oy-6);
+    ctx.font = 'bold 15px Inter'; ctx.fillText('×', ox, oy+8);
+  }
+
+  // Path trails
+  for (const robot of model.robots) {
+    if (robot.alive && robot.path && robot.pathIdx < robot.path.length) {
+      const pts = [];
+      for (let i = robot.pathIdx; i < robot.path.length; i++) {
+        const [px, py] = cellToPx(robot.path[i][0], robot.path[i][1]);
+        pts.push([px, py]);
+      }
+      if (pts.length >= 2) {
+        ctx.strokeStyle = ROBOT_COLORS[robot.id]; ctx.lineWidth = 3; ctx.setLineDash([7,5]);
+        ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Robots
+  for (const robot of model.robots) {
+    const [gc, gr] = robot.alive ? interpGridPos(robot) : [robot.c, robot.r];
+    const [x, y] = cellToPx(gc, gr);
+    const col = robot.alive ? ROBOT_COLORS[robot.id] : '#58616C';
+    const ringCol = robot.alive ? ROBOT_RING_COLORS[robot.id] : '#8a969e';
+    let ring = null;
+    if (robot.state === 'slowing') ring = UI.amber;
+    if (robot.state === 'rerouting') ring = UI.violet;
+    if (robot.state === 'blocked' || robot.state === 'offline') ring = UI.red;
+
+    // Ring
+    if (ring) {
+      ctx.strokeStyle = ring; ctx.lineWidth = 2; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Concentric AMR marker: colored outer ring, white separator, colored core.
+    ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI*2);
+    ctx.fillStyle = ringCol; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI*2);
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 10.5, 0, Math.PI*2);
+    ctx.fillStyle = ringCol; ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
+
+    // ID
+    ctx.font = 'bold 12px JetBrains Mono, Consolas'; ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(robot.id, x, y-1);
+
+    // State text
+    ctx.font = 'bold 8px Inter, Segoe UI'; ctx.fillStyle = ring || '#4d6575';
+    ctx.fillText(robot.state.toUpperCase(), x, y+29);
+
+    // Link lost
+    if (robot.alive && !robot.comms) {
+      ctx.font = 'bold 7px Inter'; ctx.fillStyle = UI.red;
+      ctx.fillText('LINK LOST', x, y-31);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3D RENDERING
+// ═══════════════════════════════════════════════════════════════
+function project3d(gx, gy, z=0) {
+  const w = canvas.width, h = canvas.height;
+  const x = (gx - (COLS-1)/2) * 60;
+  const y = (gy - (ROWS-1)/2) * 60;
+  const ca = Math.cos(azimuth), sa = Math.sin(azimuth);
+  const xr = x*ca - y*sa;
+  const yr = x*sa + y*ca;
+  const sy = Math.sin(elevation), cy = Math.cos(elevation);
+  return [w/2 + xr*zoom, h/2 + (yr*sy - z*25*cy)*zoom];
+}
+
+function poly(pts, fill, outline='') {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (outline) { ctx.strokeStyle = outline; ctx.lineWidth = 1; ctx.stroke(); }
+}
+
+function drawBox3D(c, r, cw, rh, height, fill) {
+  const x0=c-0.45, y0=r-0.45, x1=c+cw-0.55, y1=r+rh-0.55;
+  const b = [project3d(x0,y0,0), project3d(x1,y0,0), project3d(x1,y1,0), project3d(x0,y1,0)];
+  const t = [project3d(x0,y0,height), project3d(x1,y0,height), project3d(x1,y1,height), project3d(x0,y1,height)];
+  poly([b[0],b[1],t[1],t[0]], '#b8c6cf', '#7f94a3');
+  poly([b[1],b[2],t[2],t[1]], '#c5d1d8', '#7f94a3');
+  poly(t, fill, '#718999');
+
+  // Posts + beams
+  const pw = 0.10;
+  for (const px of [x0, x1]) {
+    poly([project3d(px-pw,y0,0), project3d(px+pw,y0,0), project3d(px+pw,y0,height), project3d(px-pw,y0,height)], '#a7b7c1', '#718999');
+    poly([project3d(px-pw,y1,0), project3d(px+pw,y1,0), project3d(px+pw,y1,height), project3d(px-pw,y1,height)], '#a7b7c1', '#718999');
+  }
+  for (const frac of [0.25, 0.50, 0.75]) {
+    const z = height * frac;
+    ctx.strokeStyle = '#91a5b3'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    const [a1,a2] = project3d(x0-0.03, y0-0.03, z);
+    const [b1,b2] = project3d(x1+0.03, y0-0.03, z);
+    ctx.moveTo(a1,a2); ctx.lineTo(b1,b2); ctx.stroke();
+    ctx.strokeStyle = '#748b9b'; ctx.lineWidth = 2;
+    const [c1,c2] = project3d(x0-0.03, y1+0.03, z);
+    const [d1,d2] = project3d(x1+0.03, y1+0.03, z);
+    ctx.beginPath(); ctx.moveTo(c1,c2); ctx.lineTo(d1,d2); ctx.stroke();
+  }
+}
+
+function draw3D() {
+  // Floor
+  const floor = [project3d(-0.6,-0.6), project3d(COLS-0.4,-0.6), project3d(COLS-0.4,ROWS-0.4), project3d(-0.6,ROWS-0.4)];
+  poly(floor, '#e7edf1', '#aabac5');
+
+  // Grid lines
+  ctx.strokeStyle = '#d2dde4'; ctx.lineWidth = 1;
+  for (let c = 0; c <= COLS; c++) {
+    const [a,b] = project3d(c-0.5,-0.5), [d,e] = project3d(c-0.5,ROWS-0.5);
+    ctx.beginPath(); ctx.moveTo(a,b); ctx.lineTo(d,e); ctx.stroke();
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    const [a,b] = project3d(-0.5,r-0.5), [d,e] = project3d(COLS-0.5,r-0.5);
+    ctx.beginPath(); ctx.moveTo(a,b); ctx.lineTo(d,e); ctx.stroke();
+  }
+
+  // Shelves: one visible bank per existing logical shelf (six total).
+  for (const [sc,sr,sw,sh] of SHELVES) drawBox3D(sc,sr,sw,sh,2.2,'#c3d0d7');
+
+  // Stations
+  for (const [name,c,r] of STATIONS) {
+    const [sx,sy] = project3d(c,r,0.05);
+    ctx.beginPath(); ctx.ellipse(sx,sy,11,7,0,0,Math.PI*2);
+    ctx.fillStyle = name === 'DOCK' ? '#e4f0e9' : '#e5eff7'; ctx.fill();
+    ctx.strokeStyle = name === 'DOCK' ? '#6e9b7d' : '#6d9bbc'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.font = 'bold 11px JetBrains Mono'; ctx.fillStyle = '#203f57';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText(name, sx, sy-8);
+  }
+
+  // Temp obstacles
+  const shown = new Set();
+  for (const robot of model.robots) {
+    if (robot.tempBlocked) {
+      const k = robot.tempBlocked[0]+','+robot.tempBlocked[1];
+      if (!shown.has(k)) { shown.add(k); drawBox3D(robot.tempBlocked[0], robot.tempBlocked[1], 1, 1, 0.45, '#e5c7c9'); }
+    }
+  }
+  // Manual obstacles
+  for (const k of model.manualObstacles) {
+    const [mc,mr] = k.split(',').map(Number);
+    drawBox3D(mc,mr,1,1,0.55,'#ead9b8');
+  }
+
+  // Path trails
+  for (const robot of model.robots) {
+    if (robot.alive && robot.path) {
+      const pts = [];
+      for (let i = robot.pathIdx; i < robot.path.length; i++) pts.push(project3d(robot.path[i][0], robot.path[i][1], 0.08));
+      if (pts.length >= 2) {
+        ctx.strokeStyle = ROBOT_COLORS[robot.id]; ctx.lineWidth = 3; ctx.setLineDash([7,5]);
+        ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Robots (depth sorted)
+  const ordered = [];
+  for (const robot of model.robots) {
+    const [gc,gr] = robot.alive ? interpGridPos(robot) : [robot.c, robot.r];
+    const [_,py] = project3d(gc, gr, 0);
+    ordered.push([py, robot, gc, gr]);
+  }
+  ordered.sort((a,b)=>a[0]-b[0]);
+
+  for (const [_, robot, gc, gr] of ordered) {
+    const [x,y] = project3d(gc, gr, 0.6);
+    const col = robot.alive ? ROBOT_COLORS[robot.id] : '#58616C';
+    const ringCol = robot.alive ? ROBOT_RING_COLORS[robot.id] : '#8a969e';
+
+    // Concentric AMR marker in perspective: colored outer, white separator, colored core.
+    ctx.beginPath(); ctx.ellipse(x,y,18*zoom,9*zoom,0,0,Math.PI*2);
+    ctx.fillStyle = ringCol; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x,y,14*zoom,7*zoom,0,0,Math.PI*2);
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x,y,10.5*zoom,5.25*zoom,0,0,Math.PI*2);
+    ctx.fillStyle = ringCol; ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
+
+    // Label
+    ctx.font = 'bold 11px JetBrains Mono'; ctx.fillStyle = UI.text;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('R'+robot.id, x, y-18*zoom);
+
+    // Status ring
+    if (['slowing','rerouting','blocked','offline'].includes(robot.state)) {
+      const ring = robot.state==='slowing'?UI.amber:robot.state==='rerouting'?UI.violet:UI.red;
+      ctx.strokeStyle = ring; ctx.lineWidth = 2; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.ellipse(x,y,26,14,0,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (robot.alive && !robot.comms) {
+      ctx.font = 'bold 7px Inter'; ctx.fillStyle = UI.red;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText('LINK LOST', x, y-35);
+    }
+  }
+
+  // Hint
+  ctx.font = '10px JetBrains Mono'; ctx.fillStyle = '#4d6575';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  ctx.fillText('drag to orbit  •  mouse wheel to zoom', 14, canvas.height-13);
+}
+
+function renderStage() {
+  resizeCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (viewMode === '2d') draw2D(); else draw3D();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ROBOT HEALTH SIDEBAR
+// ═══════════════════════════════════════════════════════════════
+const robotUI = {};
+
+function renderCards() {
+  const container = document.getElementById('robots-container');
+  const online = model.robots.filter(r=>r.alive).length;
+  document.getElementById('robot-count').textContent = `${online}/${model.robots.length} online`;
+
+  for (const robot of model.robots) {
+    let ui = robotUI[robot.id];
+    if (!ui) {
+      const card = document.createElement('div');
+      card.className = 'robot-card';
+      card.innerHTML = `
+        <div class="robot-card-top">
+          <span class="robot-id" style="color:${ROBOT_COLORS[robot.id]}">R${robot.id}</span>
+          <span class="robot-state" data-rid="${robot.id}"></span>
+        </div>
+        <div class="robot-info"></div>
+        <div class="robot-link"></div>
+        <div class="bar-row"><span class="bar-label">BATTERY</span><div class="bar-track"><div class="bar-fill bat-fill"></div></div><span class="bar-value bat-val">0%</span></div>
+        <div class="bar-row"><span class="bar-label">MISSION</span><div class="bar-track"><div class="bar-fill mis-fill"></div></div><span class="bar-value mis-val">0%</span></div>
+      `;
+      container.appendChild(card);
+      card.querySelector('.robot-state').addEventListener('click', () => showRobotDetails(robot.id));
+      ui = robotUI[robot.id] = {
+        card, state: card.querySelector('.robot-state'),
+        info: card.querySelector('.robot-info'),
+        link: card.querySelector('.robot-link'),
+        batFill: card.querySelector('.bat-fill'),
+        batVal: card.querySelector('.bat-val'),
+        misFill: card.querySelector('.mis-fill'),
+        misVal: card.querySelector('.mis-val'),
+      };
+    }
+
+    // State
+    const sc = robot.state==='blocked'||robot.state==='offline' ? UI.red
+      : robot.state==='rerouting' ? UI.violet
+      : robot.state==='slowing' ? UI.amber
+      : robot.state==='moving' ? UI.cyan : UI.muted;
+    ui.state.textContent = robot.state.toUpperCase();
+    ui.state.style.color = sc;
+
+    // Task
+    const task = robot.alive ? `${robot.taskId}  →  ${robot.goal[0]}` : 'No active task';
+    ui.info.textContent = task;
+
+    // Link
+    const link = robot.comms && robot.alive ? 'mesh linked' : robot.alive ? 'link lost' : 'offline';
+    ui.link.textContent = `${link}  •  cell (${Math.round(robot.c)},${Math.round(robot.r)})`;
+
+    // Battery bar
+    const bp = Math.max(0, Math.min(100, robot.battery));
+    const bCol = bp > 40 ? UI.green : bp > 15 ? UI.amber : UI.red;
+    ui.batFill.style.width = bp + '%';
+    ui.batFill.style.backgroundColor = bCol;
+    ui.batVal.textContent = Math.round(bp) + '%';
+
+    // Mission bar
+    let mp = 0;
+    if (robot.path && robot.path.length > 1) mp = 100 * robot.pathIdx / (robot.path.length - 1);
+    mp = Math.max(0, Math.min(100, mp));
+    ui.misFill.style.width = mp + '%';
+    ui.misFill.style.backgroundColor = ROBOT_COLORS[robot.id];
+    ui.misVal.textContent = Math.round(mp) + '%';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ROBOT DETAIL MODAL
+// ═══════════════════════════════════════════════════════════════
+function showRobotDetails(rid) {
+  const robot = model.robots.find(r=>r.id===rid);
+  if (!robot) return;
+  document.getElementById('modal-title').textContent = `ROBOT ${robot.id}`;
+  document.getElementById('modal-title').style.color = ROBOT_COLORS[robot.id];
+
+  const pNames = {[TaskPriority.NORMAL]:'NORMAL',[TaskPriority.EXPRESS]:'EXPRESS',[TaskPriority.RETURN_TO_DOCK]:'RETURN_TO_DOCK'};
+  const details = [
+    ['Status', robot.state.toUpperCase()],
+    ['Operational', robot.alive ? 'ONLINE / ALIVE' : 'FAILED / OFFLINE'],
+    ['Communication', robot.comms&&robot.alive ? 'MESH LINKED' : robot.alive ? 'LINK LOST' : 'OFFLINE'],
+    ['Task ID', robot.taskId],
+    ['Task Priority', pNames[robot.taskPriority]||'NORMAL'],
+    ['Priority Score', robot.priorityScore.toFixed(1)],
+    ['Goal', `${robot.goal[0]}  (${robot.goal[1]}, ${robot.goal[2]})`],
+    ['Current position', `(${robot.c.toFixed(2)}, ${robot.r.toFixed(2)})`],
+    ['Grid cell', `(${Math.round(robot.c)}, ${Math.round(robot.r)})`],
+    ['Battery', robot.battery.toFixed(1) + '%'],
+    ['Robot speed', robot.speed.toFixed(4)],
+    ['Mission progress', (robot.path&&robot.path.length>1 ? (100*robot.pathIdx/(robot.path.length-1)).toFixed(1) : '0.0') + '%'],
+    ['Path index', robot.pathIdx],
+    ['Path length', (robot.path ? robot.path.length : 0) + ' cells'],
+    ['Steps taken', robot.stepsTaken],
+    ['Blocked ticks', robot.blockedTicks],
+    ['Conflict ticks', robot.conflictTicks],
+    ['Waiting ticks', robot.waitingTicks],
+    ['Temporary block', robot.tempBlocked ? `(${robot.tempBlocked[0]},${robot.tempBlocked[1]})` : 'None'],
+    ['Idle until', robot.idleUntil.toFixed(2)],
+    ['Failed obstacle', model.failedObstacles.has(rid) ? 'YES' : 'NO'],
+  ];
+
+  const body = document.getElementById('modal-body');
+  body.innerHTML = details.map(([l,v]) => `<div class="detail-row"><span class="detail-label">${l}</span><span class="detail-value">${v}</span></div>`).join('')
+    + '<div class="modal-hint">Click the robot status again after conditions change to refresh this panel.</div>';
+  document.getElementById('robot-modal-overlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target.id === 'robot-modal-overlay') {
+    document.getElementById('robot-modal-overlay').classList.remove('open');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════════════
+function setView(mode) {
+  if (mode === viewMode) return;
+  viewMode = mode;
+  document.getElementById('btn-2d').classList.toggle('active', mode==='2d');
+  document.getElementById('btn-3d').classList.toggle('active', mode==='3d');
+  renderStage();
+}
+
+function changeSpeed(dir) {
+  const cur = model.simSpeed;
+  let idx = speedLevels.reduce((best, v, i) => Math.abs(v-cur) < Math.abs(speedLevels[best]-cur) ? i : best, 0);
+  idx = Math.max(0, Math.min(speedLevels.length-1, idx + dir));
+  model.simSpeed = speedLevels[idx];
+  document.getElementById('speed-display').textContent = model.simSpeed % 1 === 0 ? model.simSpeed + '×' : model.simSpeed.toFixed(1) + '×';
+}
+
+function clearConsole() {
+  logEntries = [];
+  document.getElementById('log-count').textContent = '0 events';
+  logEl.innerHTML = '';
+}
+
+function toggleObstacleMode() {
+  obstacleMode = !obstacleMode;
+  canvas.style.cursor = obstacleMode ? 'crosshair' : '';
+  pushLog('comm', 'SYSTEM', obstacleMode
+    ? 'Live obstacle mode ON — click any free 2D grid cell to place an obstacle; right-click removes one.'
+    : 'Live obstacle mode OFF.');
+}
+
+function gridCellFromEvent(e) {
+  if (viewMode !== '2d') return null;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const [_x0, _y0, cell] = cellToPx(0, 0);
+  const x0 = _x0 - cell/2, y0 = _y0 - cell/2;
+  const c = Math.floor((mx - x0) / cell);
+  const r = Math.floor((my - y0) / cell);
+  if (FleetModel.inBounds(c, r)) return [c, r];
+  return null;
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (obstacleMode && viewMode === '2d' && e.button === 0) {
+    const cell = gridCellFromEvent(e);
+    if (cell && model.placeManualObstacle(cell)) renderStage();
+    return;
+  }
+  if (viewMode === '3d' && e.button === 0) dragLast = [e.clientX, e.clientY];
+});
+
+canvas.addEventListener('mouseup', () => { if (!obstacleMode) dragLast = null; });
+
+canvas.addEventListener('mousemove', e => {
+  if (viewMode !== '3d' || !dragLast) return;
+  const dx = e.clientX - dragLast[0], dy = e.clientY - dragLast[1];
+  dragLast = [e.clientX, e.clientY];
+  azimuth -= dx * 0.008;
+  elevation = Math.max(0.25, Math.min(1.25, elevation - dy * 0.005));
+  renderStage();
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (viewMode !== '2d') return;
+  const cell = gridCellFromEvent(e);
+  if (cell && model.removeManualObstacle(cell)) renderStage();
+});
+
+canvas.addEventListener('wheel', e => {
+  if (viewMode !== '3d') return;
+  e.preventDefault();
+  zoom = Math.max(0.55, Math.min(1.8, zoom * (e.deltaY > 0 ? 0.92 : 1.08)));
+  renderStage();
+}, { passive: false });
+
+function injectObstacle() { model.injectObstacle(); }
+function failRobot() { model.failRobot(); }
+function dropComms() {
+  const robot = model.robots.find(r=>r.id==='A');
+  if (!robot || !robot.alive || !robot.comms) return;
+  model.setRobotAComms(false);
+  document.getElementById('net-label').textContent = 'ROBOT A LINK LOST';
+  document.getElementById('net-label').style.color = 'var(--red)';
+  document.getElementById('net-dot').style.color = 'var(--red)';
+  commsRestoreTimer = setTimeout(() => {
+    const r = model.robots.find(r=>r.id==='A');
+    if (r && r.alive) {
+      model.setRobotAComms(true);
+      document.getElementById('net-label').textContent = 'P2P MESH HEALTHY';
+      document.getElementById('net-label').style.color = 'var(--green)';
+      document.getElementById('net-dot').style.color = 'var(--green)';
+    }
+    commsRestoreTimer = null;
+  }, 4000);
+}
+function resetSim() {
+  if (commsRestoreTimer) { clearTimeout(commsRestoreTimer); commsRestoreTimer = null; }
+  clearConsole();
+  document.getElementById('net-label').textContent = 'P2P MESH HEALTHY';
+  document.getElementById('net-label').style.color = 'var(--green)';
+  document.getElementById('net-dot').style.color = 'var(--green)';
+  document.getElementById('kpi-speedup').textContent = '—';
+  document.getElementById('benchmark-result').textContent = 'NO BENCHMARK RUN YET';
+  model.comparison = null;
+  // Clear robot UI so cards are rebuilt
+  const container = document.getElementById('robots-container');
+  container.innerHTML = '';
+  for (const k in robotUI) delete robotUI[k];
+  model.reset();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIMULATION LOOP
+// ═══════════════════════════════════════════════════════════════
+let loopTick = 0;
+function gameLoop() {
+  model.step();
+  renderStage();
+  loopTick++;
+  if (loopTick % 4 === 0) {
+    renderCards();
+    renderMetrics(model.metrics);
+  }
+  setTimeout(gameLoop, 50);
+}
+
+// Bootstrap
+renderStage();
+renderCards();
+renderMetrics(model.metrics);
+gameLoop();
+</script>
+</body>
+</html>
