@@ -98,8 +98,21 @@ These are experimental targets and will be validated during development.
 
 ---
 
+## Current Status
+
+🚧 **Early Development — Planning & Architecture Phase**
+
+The repository currently contains the initial project definition and architecture. Implementation of the simulation, communication, planning, coordination, and dashboard components is planned.
+
+> **Implemented:** Nothing yet
+> **Proposed:** Core system architecture and features described above
+> **Experimental:** None yet
+
+---
+
 ## Vision
 
 > **Enable a fleet of AMRs to coordinate safely and efficiently through local intelligence and peer-to-peer communication, without depending on a centralized controller.**
 
 This project is being developed as part of **Smart India Hackathon 2026**.
+
